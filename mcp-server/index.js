@@ -69,7 +69,7 @@ function matchesFilters(metadata, filters) {
 
   // Tags filter (ALL must be present)
   if (filters.tags && filters.tags.length > 0) {
-    const noteTags = (metadata.tags || []).map(t => t.toLowerCase());
+    const noteTags = (metadata.tags || []).filter(Boolean).map(t => String(t).toLowerCase());
     const allPresent = filters.tags.every(tag =>
       noteTags.includes(tag.toLowerCase())
     );
@@ -78,7 +78,7 @@ function matchesFilters(metadata, filters) {
 
   // Tags_any filter (ANY must be present)
   if (filters.tags_any && filters.tags_any.length > 0) {
-    const noteTags = (metadata.tags || []).map(t => t.toLowerCase());
+    const noteTags = (metadata.tags || []).filter(Boolean).map(t => String(t).toLowerCase());
     const anyPresent = filters.tags_any.some(tag =>
       noteTags.includes(tag.toLowerCase())
     );
