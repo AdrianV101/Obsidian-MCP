@@ -20,6 +20,9 @@ vault_recent: folder=01-Projects/[YourProjectName]/development/decisions, limit=
 
 ## Documentation Rules
 
+### Metadata
+All notes MUST include YAML frontmatter. See `06-System/metadata-schema.md` for the full schema.
+
 ### Architecture Decisions
 When a significant technical decision is made (database choice, framework selection, API design, etc.):
 

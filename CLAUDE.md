@@ -81,3 +81,21 @@ Vault/
 - Project index files: `_index.md`
 - All notes use YAML frontmatter with `type`, `status`, `created` fields
 - Paths passed to MCP tools are relative to vault root
+
+## Metadata Schema
+
+**Canonical reference:** `06-System/metadata-schema.md`
+
+When creating ANY note via MCP, ALWAYS include frontmatter:
+```yaml
+---
+type: <type>        # Required: see schema for allowed values
+created: YYYY-MM-DD # Required
+tags: [...]         # Required: at least one tag
+status: <status>    # If applicable for the type
+---
+```
+
+Common types: `fleeting`, `research`, `adr`, `bug`, `planning`, `transcript`, `permanent`
+
+**Never create notes without frontmatter** — even quick research docs or ad-hoc files.
