@@ -24,7 +24,9 @@ npm start
 The project consists of three parts:
 
 **MCP Server** (`mcp-server/index.js`): A Node.js ES module server implementing the Model Context Protocol. It provides 9 tools for vault interaction:
-- `vault_read` / `vault_write` / `vault_append` - File operations
+- `vault_read` - Read note contents
+- `vault_write` - Create new notes from templates (enforces frontmatter)
+- `vault_append` - Add content to existing files
 - `vault_edit` - Surgical string replacement (exact match, single occurrence)
 - `vault_search` - Full-text search across markdown files
 - `vault_list` / `vault_recent` - Directory listing and recent files
@@ -32,6 +34,24 @@ The project consists of three parts:
 - `vault_query` - Query notes by YAML frontmatter (type, status, tags, dates)
 
 The server uses `VAULT_PATH` environment variable (defaults to `~/Documents/PKM`) and includes path security to prevent directory escaping.
+
+### vault_write (Template-Based Note Creation)
+
+Notes must be created from templates to ensure proper frontmatter. The tool:
+- Loads templates from `05-Templates/` at startup
+- Auto-substitutes `<% tp.date.now("YYYY-MM-DD") %>` and `<% tp.file.title %>`
+- Accepts `frontmatter` param for tags and other fields
+- Validates required fields: `type`, `created`, `tags`
+- Errors if file already exists (use `vault_edit` or `vault_append` to modify)
+
+Example:
+```javascript
+vault_write({
+  template: "adr",
+  path: "01-Projects/MyApp/development/decisions/ADR-001-database.md",
+  frontmatter: { tags: ["decision", "database"], deciders: "Team" }
+})
+```
 
 **Templates** (`templates/`): Obsidian note templates for project documentation:
 - `project-index.md` - Project overview with YAML frontmatter

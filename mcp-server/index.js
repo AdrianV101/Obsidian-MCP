@@ -193,13 +193,17 @@ async function loadTemplates() {
       });
     }
   } catch (e) {
-    console.error("Warning: 05-Templates/ not found in vault");
+    if (e.code === "ENOENT") {
+      console.error("Warning: 05-Templates/ not found in vault");
+    } else {
+      console.error(`Error loading templates: ${e.message}`);
+    }
   }
 
   return templateMap;
 }
 
-// Helper: substitute template variables
+// Helper: substitute template variables and frontmatter fields
 function substituteTemplateVariables(content, vars) {
   const now = new Date();
   const dateFormats = {
@@ -220,12 +224,73 @@ function substituteTemplateVariables(content, vars) {
   // Replace tp.file.title
   result = result.replace(/<%\s*tp\.file\.title\s*%>/g, vars.title || "Untitled");
 
-  // Replace custom variables
+  // Replace custom variables in body (<%...%> patterns)
   if (vars.custom) {
     for (const [key, value] of Object.entries(vars.custom)) {
       const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const regex = new RegExp(`<%\\s*${escaped}\\s*%>`, "g");
       result = result.replace(regex, value);
+    }
+  }
+
+  // Handle frontmatter field substitutions
+  if (vars.frontmatter && content.startsWith("---")) {
+    const endIndex = result.indexOf("---", 3);
+    if (endIndex !== -1) {
+      const frontmatterSection = result.slice(0, endIndex + 3);
+      const body = result.slice(endIndex + 3);
+
+      let updatedFrontmatter = frontmatterSection;
+
+      // Handle tags array
+      if (vars.frontmatter.tags && Array.isArray(vars.frontmatter.tags)) {
+        const tagsYaml = vars.frontmatter.tags.map(t => `  - ${t}`).join("\n");
+        let tagsReplaced = false;
+
+        // Try inline format first: tags: [tag1, tag2]
+        if (updatedFrontmatter.match(/^tags:\s*\[.*\]/m)) {
+          updatedFrontmatter = updatedFrontmatter.replace(
+            /^tags:\s*\[.*\]/m,
+            `tags:\n${tagsYaml}`
+          );
+          tagsReplaced = true;
+        }
+
+        // Try multi-line format: tags:\n  - tag1\n  - tag2
+        if (!tagsReplaced && updatedFrontmatter.match(/tags:\s*\n(?:\s+-[^\n]*\n?)*/)) {
+          updatedFrontmatter = updatedFrontmatter.replace(
+            /tags:\s*\n(?:\s+-[^\n]*\n?)*/,
+            `tags:\n${tagsYaml}\n`
+          );
+          tagsReplaced = true;
+        }
+
+        // If no tags section existed, add before closing ---
+        if (!tagsReplaced) {
+          updatedFrontmatter = updatedFrontmatter.replace(
+            /\n---$/,
+            `\ntags:\n${tagsYaml}\n---`
+          );
+        }
+      }
+
+      // Handle other simple frontmatter fields (string values)
+      for (const [key, value] of Object.entries(vars.frontmatter)) {
+        if (key === "tags") continue; // Already handled
+        if (typeof value === "string") {
+          const fieldRegex = new RegExp(`^${key}:.*$`, "m");
+          if (updatedFrontmatter.match(fieldRegex)) {
+            updatedFrontmatter = updatedFrontmatter.replace(fieldRegex, `${key}: ${value}`);
+          } else {
+            updatedFrontmatter = updatedFrontmatter.replace(
+              /\n---$/,
+              `\n${key}: ${value}\n---`
+            );
+          }
+        }
+      }
+
+      result = updatedFrontmatter + body;
     }
   }
 
@@ -295,7 +360,9 @@ Built-in variables (auto-substituted):
 - <% tp.date.now("YYYY-MM-DD") %> - Current date
 - <% tp.file.title %> - Derived from output path filename
 
-Pass custom variables via the 'variables' parameter.`,
+Required: frontmatter.tags - provide at least one tag for the note.
+Optional: frontmatter.status, frontmatter.project, frontmatter.deciders (depending on template type).
+Pass custom <%...%> variables via the 'variables' parameter.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -307,8 +374,18 @@ Pass custom variables via the 'variables' parameter.`,
           path: { type: "string", description: "Output path relative to vault root" },
           variables: {
             type: "object",
-            description: "Custom variables to substitute (key-value pairs)",
+            description: "Custom variables for <%...%> patterns in body (key-value string pairs)",
             additionalProperties: { type: "string" }
+          },
+          frontmatter: {
+            type: "object",
+            description: "Frontmatter fields to set (e.g., {tags: ['tag1', 'tag2'], status: 'active'})",
+            properties: {
+              tags: { type: "array", items: { type: "string" }, description: "Tags for the note (required)" },
+              status: { type: "string", description: "Note status" },
+              project: { type: "string", description: "Project name (for devlogs)" },
+              deciders: { type: "string", description: "Decision makers (for ADRs)" }
+            }
           },
           createDirs: { type: "boolean", description: "Create parent directories if they don't exist", default: true }
         },
@@ -422,12 +499,60 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "vault_write": {
-        const filePath = resolvePath(args.path);
-        if (args.createDirs !== false) {
+        const { template: templateName, path: outputPath, variables = {}, frontmatter = {}, createDirs = true } = args;
+
+        // 1. Validate template exists
+        const templateInfo = templateRegistry.get(templateName);
+        if (!templateInfo) {
+          const available = Array.from(templateRegistry.keys()).join(", ");
+          throw new Error(`Template "${templateName}" not found. Available templates: ${available || "(none)"}`);
+        }
+
+        // 2. Check file doesn't already exist
+        const filePath = resolvePath(outputPath);
+        try {
+          await fs.access(filePath);
+          throw new Error(`File already exists: ${outputPath}. Use vault_edit or vault_append to modify existing files.`);
+        } catch (e) {
+          if (e.code !== "ENOENT") throw e;
+          // File doesn't exist - good, proceed
+        }
+
+        // 3. Derive title from output path
+        const title = path.basename(outputPath, ".md");
+
+        // 4. Substitute variables
+        const substituted = substituteTemplateVariables(templateInfo.content, {
+          title,
+          custom: variables,
+          frontmatter
+        });
+
+        // 5. Validate frontmatter (strict)
+        const validation = validateFrontmatterStrict(substituted);
+        if (!validation.valid) {
+          throw new Error(`Template validation failed:\n${validation.errors.join("\n")}`);
+        }
+
+        // 6. Create directories if needed
+        if (createDirs) {
           await fs.mkdir(path.dirname(filePath), { recursive: true });
         }
-        await fs.writeFile(filePath, args.content, "utf-8");
-        return { content: [{ type: "text", text: `Written to ${args.path}` }] };
+
+        // 7. Write file
+        await fs.writeFile(filePath, substituted, "utf-8");
+
+        // 8. Return success with frontmatter summary
+        const fm = validation.frontmatter;
+        const createdStr = fm.created instanceof Date
+          ? fm.created.toISOString().split("T")[0]
+          : fm.created;
+        return {
+          content: [{
+            type: "text",
+            text: `Created ${outputPath} from template "${templateName}"\n\nFrontmatter:\n- type: ${fm.type}\n- created: ${createdStr}\n- tags: ${(fm.tags || []).filter(Boolean).join(", ")}`
+          }]
+        };
       }
 
       case "vault_append": {
@@ -667,7 +792,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-// Start the server
-const transport = new StdioServerTransport();
-await server.connect(transport);
-console.error("PKM MCP Server running...");
+// Initialize and start the server
+async function initializeServer() {
+  // Load templates before connecting
+  templateRegistry = await loadTemplates();
+
+  // Build template descriptions for tool schema
+  if (templateRegistry.size > 0) {
+    templateDescriptions = Array.from(templateRegistry.values())
+      .map(t => `- **${t.shortName}**: ${t.description}`)
+      .join("\n");
+  } else {
+    templateDescriptions = "(No templates found - add .md files to 05-Templates/)";
+  }
+
+  // Connect server
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error(`PKM MCP Server running... (${templateRegistry.size} templates loaded)`);
+}
+
+initializeServer();
