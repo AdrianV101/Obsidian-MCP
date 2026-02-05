@@ -13,6 +13,10 @@ import yaml from "js-yaml";
 // Get vault path from environment
 const VAULT_PATH = process.env.VAULT_PATH || process.env.HOME + "/Documents/PKM";
 
+// Template registry (populated at startup)
+let templateRegistry = new Map();
+let templateDescriptions = "";
+
 // Helper: resolve path relative to vault
 function resolvePath(relativePath) {
   const resolved = path.resolve(VAULT_PATH, relativePath);
@@ -117,6 +121,149 @@ function formatMetadata(metadata) {
   return { summary: parts.join(" | "), tagLine };
 }
 
+// Helper: count non-overlapping occurrences of a substring
+function countOccurrences(content, searchString) {
+  if (searchString.length === 0) return 0;
+  let count = 0;
+  let position = 0;
+  while ((position = content.indexOf(searchString, position)) !== -1) {
+    count++;
+    position += searchString.length;
+  }
+  return count;
+}
+
+// Helper: extract template variables from content
+function extractTemplateVariables(content) {
+  const variables = new Set();
+  const regex = /<%\s*tp\.([a-zA-Z_.()"\-]+)\s*%>/g;
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    variables.add(match[1]);
+  }
+  return Array.from(variables);
+}
+
+// Helper: extract description from template
+function extractTemplateDescription(content, frontmatter) {
+  if (frontmatter?.description) return frontmatter.description;
+
+  const lines = content.split("\n");
+  let inFrontmatter = false;
+  for (const line of lines) {
+    if (line.trim() === "---") {
+      inFrontmatter = !inFrontmatter;
+      continue;
+    }
+    if (inFrontmatter) continue;
+
+    const trimmed = line.trim();
+    if (trimmed.startsWith("#")) {
+      return trimmed.replace(/^#+\s*/, "").replace(/<%[^%]+%>/g, "{title}").slice(0, 80);
+    }
+    if (trimmed && !trimmed.startsWith("<!--")) {
+      return trimmed.slice(0, 80);
+    }
+  }
+  return `Template for ${frontmatter?.type || "notes"}`;
+}
+
+// Helper: load templates from 05-Templates/
+async function loadTemplates() {
+  const templatesDir = resolvePath("05-Templates");
+  const templateMap = new Map();
+
+  try {
+    const files = await fs.readdir(templatesDir);
+    for (const file of files) {
+      if (!file.endsWith(".md")) continue;
+
+      const shortName = path.basename(file, ".md");
+      const content = await fs.readFile(path.join(templatesDir, file), "utf-8");
+      const frontmatter = extractFrontmatter(content);
+      const variables = extractTemplateVariables(content);
+
+      templateMap.set(shortName, {
+        shortName,
+        path: `05-Templates/${file}`,
+        description: extractTemplateDescription(content, frontmatter),
+        variables,
+        frontmatter,
+        content
+      });
+    }
+  } catch (e) {
+    console.error("Warning: 05-Templates/ not found in vault");
+  }
+
+  return templateMap;
+}
+
+// Helper: substitute template variables
+function substituteTemplateVariables(content, vars) {
+  const now = new Date();
+  const dateFormats = {
+    "YYYY-MM-DD": now.toISOString().split("T")[0],
+    "YYYY-MM-DD HH:mm": now.toISOString().replace("T", " ").slice(0, 16),
+    "YYYY": now.getFullYear().toString(),
+    "MM": String(now.getMonth() + 1).padStart(2, "0"),
+    "DD": String(now.getDate()).padStart(2, "0")
+  };
+
+  let result = content;
+
+  // Replace tp.date.now("FORMAT") patterns
+  result = result.replace(/<%\s*tp\.date\.now\("([^"]+)"\)\s*%>/g, (match, format) => {
+    return dateFormats[format] || now.toISOString().split("T")[0];
+  });
+
+  // Replace tp.file.title
+  result = result.replace(/<%\s*tp\.file\.title\s*%>/g, vars.title || "Untitled");
+
+  // Replace custom variables
+  if (vars.custom) {
+    for (const [key, value] of Object.entries(vars.custom)) {
+      const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`<%\\s*${escaped}\\s*%>`, "g");
+      result = result.replace(regex, value);
+    }
+  }
+
+  return result;
+}
+
+// Helper: validate frontmatter after substitution
+function validateFrontmatterStrict(content) {
+  const frontmatter = extractFrontmatter(content);
+  const errors = [];
+
+  if (!frontmatter) {
+    return { valid: false, errors: ["No frontmatter found in template output"], frontmatter: null };
+  }
+
+  if (!frontmatter.type) {
+    errors.push("Missing required field: type");
+  }
+  if (!frontmatter.created) {
+    errors.push("Missing required field: created");
+  }
+  if (!frontmatter.tags || !Array.isArray(frontmatter.tags) || frontmatter.tags.filter(Boolean).length === 0) {
+    errors.push("Missing required field: tags (must be non-empty array)");
+  }
+
+  // Check for unsubstituted template variables
+  const unsubstituted = content.match(/<%[^%]+%>/g);
+  if (unsubstituted) {
+    errors.push(`Unsubstituted template variables: ${unsubstituted.join(", ")}`);
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    frontmatter
+  };
+}
+
 // Create the server
 const server = new Server(
   { name: "pkm-mcp-server", version: "1.0.0" },
@@ -139,15 +286,33 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "vault_write",
-      description: "Create or overwrite a markdown file in the vault",
+      description: `Create a new note from a template. Notes must be created from templates to ensure proper frontmatter.
+
+Available templates:
+${templateDescriptions || "(Loading...)"}
+
+Built-in variables (auto-substituted):
+- <% tp.date.now("YYYY-MM-DD") %> - Current date
+- <% tp.file.title %> - Derived from output path filename
+
+Pass custom variables via the 'variables' parameter.`,
       inputSchema: {
         type: "object",
         properties: {
-          path: { type: "string", description: "Path relative to vault root" },
-          content: { type: "string", description: "Markdown content to write" },
+          template: {
+            type: "string",
+            description: "Template name (filename without .md from 05-Templates/)",
+            enum: Array.from(templateRegistry.keys())
+          },
+          path: { type: "string", description: "Output path relative to vault root" },
+          variables: {
+            type: "object",
+            description: "Custom variables to substitute (key-value pairs)",
+            additionalProperties: { type: "string" }
+          },
           createDirs: { type: "boolean", description: "Create parent directories if they don't exist", default: true }
         },
-        required: ["path", "content"]
+        required: ["template", "path"]
       }
     },
     {
@@ -161,6 +326,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           heading: { type: "string", description: "Optional: append under this heading (e.g., '## Recent Activity')" }
         },
         required: ["path", "content"]
+      }
+    },
+    {
+      name: "vault_edit",
+      description: "Edit a file by replacing an exact string match. The old_string must appear exactly once in the file for safety.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Path relative to vault root" },
+          old_string: { type: "string", description: "Exact string to find (must match exactly once)" },
+          new_string: { type: "string", description: "Replacement string" }
+        },
+        required: ["path", "old_string", "new_string"]
       }
     },
     {
@@ -274,6 +452,36 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         await fs.writeFile(filePath, newContent, "utf-8");
         return { content: [{ type: "text", text: `Appended to ${args.path}` }] };
+      }
+
+      case "vault_edit": {
+        const filePath = resolvePath(args.path);
+
+        // Read existing file (will throw if doesn't exist)
+        const content = await fs.readFile(filePath, "utf-8");
+
+        // Count occurrences
+        const count = countOccurrences(content, args.old_string);
+
+        if (count === 0) {
+          return {
+            content: [{ type: "text", text: `No match found for the specified old_string in ${args.path}` }],
+            isError: true
+          };
+        }
+
+        if (count > 1) {
+          return {
+            content: [{ type: "text", text: `Found ${count} matches for old_string in ${args.path}. Please provide a more specific string that matches exactly once.` }],
+            isError: true
+          };
+        }
+
+        // Exactly one match - safe to replace
+        const newContent = content.replace(args.old_string, args.new_string);
+        await fs.writeFile(filePath, newContent, "utf-8");
+
+        return { content: [{ type: "text", text: `Successfully edited ${args.path}` }] };
       }
 
       case "vault_search": {
