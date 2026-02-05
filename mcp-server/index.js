@@ -8,6 +8,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import fs from "fs/promises";
 import path from "path";
+import yaml from "js-yaml";
 
 // Get vault path from environment
 const VAULT_PATH = process.env.VAULT_PATH || process.env.HOME + "/Documents/PKM";
@@ -36,6 +37,84 @@ async function getAllMarkdownFiles(dir, baseDir = dir) {
     }
   }
   return files;
+}
+
+// Helper: extract YAML frontmatter from markdown content
+function extractFrontmatter(content) {
+  if (!content.startsWith("---")) return null;
+  const endIndex = content.indexOf("---", 3);
+  if (endIndex === -1) return null;
+
+  const yamlContent = content.slice(3, endIndex).trim();
+  try {
+    return yaml.load(yamlContent);
+  } catch (e) {
+    return null; // Invalid YAML
+  }
+}
+
+// Helper: check if metadata matches query filters
+function matchesFilters(metadata, filters) {
+  if (!metadata) return false;
+
+  // Type filter (exact match)
+  if (filters.type && metadata.type !== filters.type) {
+    return false;
+  }
+
+  // Status filter (exact match)
+  if (filters.status && metadata.status !== filters.status) {
+    return false;
+  }
+
+  // Tags filter (ALL must be present)
+  if (filters.tags && filters.tags.length > 0) {
+    const noteTags = (metadata.tags || []).map(t => t.toLowerCase());
+    const allPresent = filters.tags.every(tag =>
+      noteTags.includes(tag.toLowerCase())
+    );
+    if (!allPresent) return false;
+  }
+
+  // Tags_any filter (ANY must be present)
+  if (filters.tags_any && filters.tags_any.length > 0) {
+    const noteTags = (metadata.tags || []).map(t => t.toLowerCase());
+    const anyPresent = filters.tags_any.some(tag =>
+      noteTags.includes(tag.toLowerCase())
+    );
+    if (!anyPresent) return false;
+  }
+
+  // Date filters (string comparison works for YYYY-MM-DD)
+  const createdStr = metadata.created instanceof Date
+    ? metadata.created.toISOString().split("T")[0]
+    : String(metadata.created || "");
+
+  if (filters.created_after && createdStr < filters.created_after) {
+    return false;
+  }
+  if (filters.created_before && createdStr > filters.created_before) {
+    return false;
+  }
+
+  return true;
+}
+
+// Helper: format metadata for display
+function formatMetadata(metadata) {
+  const parts = [];
+  if (metadata.type) parts.push(`type: ${metadata.type}`);
+  if (metadata.status) parts.push(`status: ${metadata.status}`);
+  if (metadata.created) {
+    const dateStr = metadata.created instanceof Date
+      ? metadata.created.toISOString().split("T")[0]
+      : metadata.created;
+    parts.push(`created: ${dateStr}`);
+  }
+  const tagLine = metadata.tags?.length > 0
+    ? `tags: ${metadata.tags.join(", ")}`
+    : "";
+  return { summary: parts.join(" | "), tagLine };
 }
 
 // Create the server
@@ -130,6 +209,23 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           direction: { type: "string", enum: ["incoming", "outgoing", "both"], default: "both" }
         },
         required: ["path"]
+      }
+    },
+    {
+      name: "vault_query",
+      description: "Query notes by YAML frontmatter metadata (type, status, tags, dates)",
+      inputSchema: {
+        type: "object",
+        properties: {
+          type: { type: "string", description: "Filter by note type (exact match)" },
+          status: { type: "string", description: "Filter by status (exact match)" },
+          tags: { type: "array", items: { type: "string" }, description: "ALL tags must be present (case-insensitive)" },
+          tags_any: { type: "array", items: { type: "string" }, description: "ANY tag must be present (case-insensitive)" },
+          created_after: { type: "string", description: "Notes created on or after this date (YYYY-MM-DD)" },
+          created_before: { type: "string", description: "Notes created on or before this date (YYYY-MM-DD)" },
+          folder: { type: "string", description: "Limit search to this folder" },
+          limit: { type: "number", description: "Max results to return", default: 50 }
+        }
       }
     }
   ]
@@ -300,6 +396,56 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         
         return { content: [{ type: "text", text: output || "No links found" }] };
+      }
+
+      case "vault_query": {
+        const searchDir = args.folder ? resolvePath(args.folder) : VAULT_PATH;
+        const files = await getAllMarkdownFiles(searchDir);
+        const limit = args.limit || 50;
+        const results = [];
+
+        const filters = {
+          type: args.type,
+          status: args.status,
+          tags: args.tags,
+          tags_any: args.tags_any,
+          created_after: args.created_after,
+          created_before: args.created_before
+        };
+
+        for (const file of files) {
+          if (results.length >= limit) break;
+
+          const filePath = path.join(searchDir, file);
+          const content = await fs.readFile(filePath, "utf-8");
+          const metadata = extractFrontmatter(content);
+
+          if (matchesFilters(metadata, filters)) {
+            const { summary, tagLine } = formatMetadata(metadata);
+            const relativePath = args.folder
+              ? path.join(args.folder, file)
+              : file;
+            results.push({ path: relativePath, summary, tagLine });
+          }
+        }
+
+        if (results.length === 0) {
+          return {
+            content: [{
+              type: "text",
+              text: "No notes found matching the query."
+            }]
+          };
+        }
+
+        const output = `Found ${results.length} note${results.length === 1 ? "" : "s"} matching query:\n\n` +
+          results.map(r => {
+            let entry = `**${r.path}**\n${r.summary}`;
+            if (r.tagLine) entry += `\n${r.tagLine}`;
+            return entry;
+          }).join("\n\n");
+
+        return { content: [{ type: "text", text: output }] };
       }
 
       default:

@@ -23,11 +23,12 @@ npm start
 
 The project consists of three parts:
 
-**MCP Server** (`mcp-server/index.js`): A Node.js ES module server implementing the Model Context Protocol. It provides 7 tools for vault interaction:
+**MCP Server** (`mcp-server/index.js`): A Node.js ES module server implementing the Model Context Protocol. It provides 8 tools for vault interaction:
 - `vault_read` / `vault_write` / `vault_append` - File operations
 - `vault_search` - Full-text search across markdown files
 - `vault_list` / `vault_recent` - Directory listing and recent files
 - `vault_links` - Wikilink analysis (`[[...]]` syntax)
+- `vault_query` - Query notes by YAML frontmatter (type, status, tags, dates)
 
 The server uses `VAULT_PATH` environment variable (defaults to `~/Documents/PKM`) and includes path security to prevent directory escaping.
 
