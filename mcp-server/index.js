@@ -9,6 +9,7 @@ import {
 import fs from "fs/promises";
 import path from "path";
 import yaml from "js-yaml";
+import { SemanticIndex } from "./embeddings.js";
 
 // Get vault path from environment
 const VAULT_PATH = process.env.VAULT_PATH || process.env.HOME + "/Documents/PKM";
@@ -16,6 +17,9 @@ const VAULT_PATH = process.env.VAULT_PATH || process.env.HOME + "/Documents/PKM"
 // Template registry (populated at startup)
 let templateRegistry = new Map();
 let templateDescriptions = "";
+
+// Semantic index (populated at startup if OPENAI_API_KEY is set)
+let semanticIndex = null;
 
 // Helper: resolve path relative to vault
 function resolvePath(relativePath) {
@@ -399,8 +403,8 @@ const server = new Server(
 );
 
 // List available tools
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  const tools = [
     {
       name: "vault_read",
       description: "Read the contents of a markdown file from the vault",
@@ -558,8 +562,27 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
         }
       }
     }
-  ]
-}));
+  ];
+
+  if (semanticIndex?.isAvailable) {
+    tools.push({
+      name: "vault_semantic_search",
+      description: "Search the vault using semantic similarity. Finds conceptually related notes even when they use different words. Requires OPENAI_API_KEY.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Natural language search query (e.g., 'managing information overload')" },
+          limit: { type: "number", description: "Max results to return (default: 5)", default: 5 },
+          folder: { type: "string", description: "Optional: limit search to this folder (e.g., '01-Projects')" },
+          threshold: { type: "number", description: "Minimum similarity score 0-1 (default: no threshold)" }
+        },
+        required: ["query"]
+      }
+    });
+  }
+
+  return { tools };
+});
 
 // Handle tool calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -916,6 +939,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case "vault_semantic_search": {
+        if (!semanticIndex?.isAvailable) {
+          throw new Error("Semantic search not available (OPENAI_API_KEY not set)");
+        }
+        const text = await semanticIndex.search({
+          query: args.query,
+          limit: args.limit || 5,
+          folder: args.folder,
+          threshold: args.threshold
+        });
+        return { content: [{ type: "text", text }] };
+      }
+
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -941,10 +977,25 @@ async function initializeServer() {
     templateDescriptions = "(No templates found - add .md files to 05-Templates/)";
   }
 
+  // Initialize semantic index if API key is available
+  const openaiApiKey = process.env.OPENAI_API_KEY;
+  if (openaiApiKey) {
+    try {
+      semanticIndex = new SemanticIndex({ vaultPath: VAULT_PATH, openaiApiKey });
+      await semanticIndex.initialize();
+      console.error("Semantic index initialized");
+    } catch (err) {
+      console.error(`Semantic index init failed (non-fatal): ${err.message}`);
+      semanticIndex = null;
+    }
+  } else {
+    console.error("OPENAI_API_KEY not set — semantic search disabled");
+  }
+
   // Connect server
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(`PKM MCP Server running... (${templateRegistry.size} templates loaded)`);
+  console.error(`PKM MCP Server running... (${templateRegistry.size} templates loaded${semanticIndex?.isAvailable ? ", semantic search enabled" : ""})`);
 }
 
 initializeServer();

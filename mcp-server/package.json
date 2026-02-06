@@ -9,6 +9,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "js-yaml": "^4.1.0"
+    "better-sqlite3": "^12.6.2",
+    "js-yaml": "^4.1.0",
+    "sqlite-vec": "^0.1.7-alpha.2"
   }
 }

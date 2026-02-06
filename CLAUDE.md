@@ -23,18 +23,32 @@ npm start
 
 The project consists of three parts:
 
-**MCP Server** (`mcp-server/index.js`): A Node.js ES module server implementing the Model Context Protocol. It provides 10 tools for vault interaction:
+**MCP Server** (`mcp-server/index.js`): A Node.js ES module server implementing the Model Context Protocol. It provides 11 tools for vault interaction:
 - `vault_read` - Read note contents
 - `vault_write` - Create new notes from templates (enforces frontmatter)
 - `vault_append` - Add content to existing files
 - `vault_edit` - Surgical string replacement (exact match, single occurrence)
 - `vault_search` - Full-text search across markdown files
+- `vault_semantic_search` - Semantic similarity search using OpenAI embeddings (requires `OPENAI_API_KEY`)
 - `vault_list` / `vault_recent` - Directory listing and recent files
 - `vault_links` - Wikilink analysis (`[[...]]` syntax)
 - `vault_query` - Query notes by YAML frontmatter (type, status, tags, dates)
 - `vault_tags` - Discover all tags with per-note counts; supports folder scoping, glob patterns, inline `#tag` parsing
 
 The server uses `VAULT_PATH` environment variable (defaults to `~/Documents/PKM`) and includes path security to prevent directory escaping.
+
+### vault_semantic_search (Semantic Similarity Search)
+
+Finds conceptually related notes even when they use different terminology. For example, searching "managing overwhelm" finds notes about "cognitive load" or "information overload".
+
+- Requires `OPENAI_API_KEY` env var — tool is hidden from tool list when not set
+- Uses OpenAI `text-embedding-3-large` (3072 dimensions)
+- Index stored at `$VAULT_PATH/.obsidian/semantic-index.db` (SQLite + sqlite-vec)
+- Background `fs.watch` keeps index fresh; startup sync catches changes made while server was stopped
+- Chunking: whole-note for short notes, heading-based (`##`) splits for notes > ~2000 tokens
+- Params: `query` (required), `limit`, `folder`, `threshold` (0-1 similarity score)
+
+The semantic index is a regenerable cache — deleting `semantic-index.db` triggers a full re-embed on next startup. The DB syncs across machines via Obsidian Sync (stored in `.obsidian/`).
 
 ### vault_write (Template-Based Note Creation)
 
@@ -73,12 +87,15 @@ Register the MCP server in `~/.claude/settings.json`:
       "command": "node",
       "args": ["/absolute/path/to/mcp-server/index.js"],
       "env": {
-        "VAULT_PATH": "/absolute/path/to/obsidian/vault"
+        "VAULT_PATH": "/absolute/path/to/obsidian/vault",
+        "OPENAI_API_KEY": "sk-..."
       }
     }
   }
 }
 ```
+
+`OPENAI_API_KEY` is optional — without it, all tools except `vault_semantic_search` work normally.
 
 ## Vault Structure Convention
 
