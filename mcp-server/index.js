@@ -329,6 +329,69 @@ function validateFrontmatterStrict(content) {
   };
 }
 
+// Helper: extract inline #tags from markdown body
+function extractInlineTags(content) {
+  let body = content;
+
+  // Strip frontmatter (parsed separately)
+  if (content.startsWith("---")) {
+    const endIndex = content.indexOf("---", 3);
+    if (endIndex !== -1) {
+      body = content.slice(endIndex + 3);
+    }
+  }
+
+  // Remove fenced code blocks
+  body = body.replace(/```[\s\S]*?```/g, "");
+
+  // Remove inline code
+  body = body.replace(/`[^`]+`/g, "");
+
+  // Remove heading markers to avoid # in ## being matched
+  body = body.replace(/^#+\s/gm, "");
+
+  const tags = new Set();
+  const tagRegex = /(?:^|[^a-zA-Z0-9&])#([a-zA-Z_][a-zA-Z0-9_/-]*)/g;
+  let match;
+  while ((match = tagRegex.exec(body)) !== null) {
+    tags.add(match[1].toLowerCase());
+  }
+
+  return Array.from(tags);
+}
+
+// Helper: match tag against glob-like pattern
+function matchesTagPattern(tag, pattern) {
+  if (!pattern) return true;
+
+  const t = tag.toLowerCase();
+  const p = pattern.toLowerCase();
+
+  // Hierarchical prefix: "pkm/*" matches "pkm" and "pkm/system"
+  if (p.endsWith("/*")) {
+    const prefix = p.slice(0, -2);
+    return t === prefix || t.startsWith(prefix + "/");
+  }
+
+  // Substring: "*mcp*"
+  if (p.startsWith("*") && p.endsWith("*") && p.length > 2) {
+    return t.includes(p.slice(1, -1));
+  }
+
+  // Prefix: "dev*"
+  if (p.endsWith("*")) {
+    return t.startsWith(p.slice(0, -1));
+  }
+
+  // Suffix: "*fix"
+  if (p.startsWith("*")) {
+    return t.endsWith(p.slice(1));
+  }
+
+  // Exact match
+  return t === p;
+}
+
 // Create the server
 const server = new Server(
   { name: "pkm-mcp-server", version: "1.0.0" },
@@ -480,6 +543,18 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
           created_before: { type: "string", description: "Notes created on or before this date (YYYY-MM-DD)" },
           folder: { type: "string", description: "Limit search to this folder" },
           limit: { type: "number", description: "Max results to return", default: 50 }
+        }
+      }
+    },
+    {
+      name: "vault_tags",
+      description: "Discover all tags used across the vault with per-note occurrence counts. Useful for exploring tag conventions, finding hierarchical tag trees, and understanding vault organization.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          folder: { type: "string", description: "Optional: limit to this folder (e.g., '01-Projects')" },
+          pattern: { type: "string", description: "Glob-like filter: 'pkm/*' (hierarchical), '*research*' (substring), 'dev*' (prefix)" },
+          include_inline: { type: "boolean", description: "Also parse inline #tags from note bodies (default: false, frontmatter only)", default: false }
         }
       }
     }
@@ -779,6 +854,66 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }).join("\n\n");
 
         return { content: [{ type: "text", text: output }] };
+      }
+
+      case "vault_tags": {
+        const searchDir = args.folder ? resolvePath(args.folder) : VAULT_PATH;
+        const files = await getAllMarkdownFiles(searchDir);
+        const tagCounts = new Map();
+        let notesWithTags = 0;
+
+        for (const file of files) {
+          const filePath = path.join(searchDir, file);
+          const content = await fs.readFile(filePath, "utf-8");
+
+          // Collect tags from this file (deduplicated per-file)
+          const fileTags = new Set();
+
+          // Frontmatter tags (always)
+          const metadata = extractFrontmatter(content);
+          if (metadata && Array.isArray(metadata.tags)) {
+            for (const tag of metadata.tags) {
+              if (tag) fileTags.add(String(tag).toLowerCase());
+            }
+          }
+
+          // Inline tags (opt-in)
+          if (args.include_inline) {
+            for (const tag of extractInlineTags(content)) {
+              fileTags.add(tag);
+            }
+          }
+
+          // Increment counts (once per file per tag)
+          if (fileTags.size > 0) {
+            notesWithTags++;
+            for (const tag of fileTags) {
+              tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+            }
+          }
+        }
+
+        // Filter by pattern
+        let results = Array.from(tagCounts.entries());
+        if (args.pattern) {
+          results = results.filter(([tag]) => matchesTagPattern(tag, args.pattern));
+        }
+
+        // Sort: count desc, then alphabetical
+        results.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+
+        if (results.length === 0) {
+          return {
+            content: [{ type: "text", text: "No tags found matching criteria." }]
+          };
+        }
+
+        const header = `Found ${results.length} unique tag${results.length === 1 ? "" : "s"} across ${notesWithTags} note${notesWithTags === 1 ? "" : "s"}\n`;
+        const lines = results.map(([tag, count]) => `${tag} (${count})`);
+
+        return {
+          content: [{ type: "text", text: header + "\n" + lines.join("\n") }]
+        };
       }
 
       default:
