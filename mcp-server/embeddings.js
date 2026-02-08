@@ -161,6 +161,60 @@ export class SemanticIndex {
     return `Found ${results.length} semantically related note${results.length === 1 ? "" : "s"}:\n\n${formatted}${syncNote}`;
   }
 
+  async searchRaw({ query, limit = 5, folder, threshold, excludeFiles }) {
+    if (!this.isAvailable) {
+      throw new Error("Semantic index not available");
+    }
+
+    const [queryEmbedding] = await getEmbeddings([query], this.openaiApiKey);
+
+    const vecResults = this.db.prepare(`
+      SELECT rowid, distance
+      FROM vec_chunks
+      WHERE embedding MATCH ?
+      ORDER BY distance
+      LIMIT ?
+    `).all(
+      new Float32Array(queryEmbedding),
+      Math.min(limit * 3, 50)
+    );
+
+    const results = [];
+    const getChunk = this.db.prepare(`
+      SELECT file_path, chunk_index, heading, content_preview
+      FROM chunks WHERE id = ?
+    `);
+
+    const seenFiles = new Set();
+    for (const { rowid, distance } of vecResults) {
+      if (results.length >= limit) break;
+
+      const chunk = getChunk.get(rowid);
+      if (!chunk) continue;
+
+      if (folder) {
+        const prefix = folder.endsWith("/") ? folder : folder + "/";
+        if (!chunk.file_path.startsWith(prefix)) continue;
+      }
+
+      const score = Math.max(0, Math.min(1, 1 - distance / 2));
+      if (threshold && score < threshold) continue;
+
+      if (excludeFiles?.has(chunk.file_path)) continue;
+
+      if (seenFiles.has(chunk.file_path)) continue;
+      seenFiles.add(chunk.file_path);
+
+      results.push({
+        path: chunk.file_path,
+        score: Math.round(score * 1000) / 1000,
+        preview: chunk.content_preview
+      });
+    }
+
+    return results;
+  }
+
   async reindexFile(relativePath) {
     if (!this.db) return;
 

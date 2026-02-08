@@ -23,13 +23,14 @@ npm start
 
 The project consists of three parts:
 
-**MCP Server** (`mcp-server/index.js`): A Node.js ES module server implementing the Model Context Protocol. It provides 11 tools for vault interaction:
+**MCP Server** (`mcp-server/index.js`): A Node.js ES module server implementing the Model Context Protocol. It provides 12 tools for vault interaction:
 - `vault_read` - Read note contents
 - `vault_write` - Create new notes from templates (enforces frontmatter)
 - `vault_append` - Add content to existing files
 - `vault_edit` - Surgical string replacement (exact match, single occurrence)
 - `vault_search` - Full-text search across markdown files
 - `vault_semantic_search` - Semantic similarity search using OpenAI embeddings (requires `OPENAI_API_KEY`)
+- `vault_suggest_links` - Suggest relevant notes to link to based on content similarity (requires `OPENAI_API_KEY`)
 - `vault_list` / `vault_recent` - Directory listing and recent files
 - `vault_links` - Wikilink analysis (`[[...]]` syntax)
 - `vault_query` - Query notes by YAML frontmatter (type, status, tags, dates)

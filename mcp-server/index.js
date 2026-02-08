@@ -579,6 +579,20 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
         required: ["query"]
       }
     });
+    tools.push({
+      name: "vault_suggest_links",
+      description: "Suggest relevant notes to link to based on content similarity. Accepts text content or a file path, finds semantically related notes, and excludes notes already linked via [[wikilinks]].",
+      inputSchema: {
+        type: "object",
+        properties: {
+          content: { type: "string", description: "Text content to find link suggestions for. Takes precedence over path." },
+          path: { type: "string", description: "Path to an existing note to suggest links for. Used if content is not provided." },
+          limit: { type: "number", description: "Max suggestions to return (default: 5)", default: 5 },
+          folder: { type: "string", description: "Optional: limit suggestions to this folder (e.g., '01-Projects')" },
+          threshold: { type: "number", description: "Minimum similarity score 0-1 (default: no threshold)" }
+        }
+      }
+    });
   }
 
   return { tools };
@@ -950,6 +964,74 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           threshold: args.threshold
         });
         return { content: [{ type: "text", text }] };
+      }
+
+      case "vault_suggest_links": {
+        if (!semanticIndex?.isAvailable) {
+          throw new Error("Link suggestions not available (OPENAI_API_KEY not set)");
+        }
+
+        // Resolve input text
+        let inputText = args.content;
+        let sourcePath = args.path;
+        if (!inputText && !sourcePath) {
+          throw new Error("Either 'content' or 'path' must be provided");
+        }
+        if (!inputText) {
+          const filePath = resolvePath(sourcePath);
+          inputText = await fs.readFile(filePath, "utf-8");
+        }
+
+        // Strip frontmatter for embedding
+        let body = inputText;
+        if (body.startsWith("---")) {
+          const endIdx = body.indexOf("---", 3);
+          if (endIdx !== -1) body = body.slice(endIdx + 3).trim();
+        }
+        if (!body) throw new Error("No content to analyze");
+
+        // Parse existing [[wikilinks]] to build exclusion set
+        const linkRegex = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
+        const linkedNames = new Set();
+        let match;
+        while ((match = linkRegex.exec(inputText)) !== null) {
+          // Store basename (without path/extension) for matching
+          const target = match[1];
+          linkedNames.add(path.basename(target, ".md").toLowerCase());
+        }
+
+        // Find similar notes via semantic index
+        const excludeFiles = new Set();
+        if (sourcePath) excludeFiles.add(sourcePath);
+
+        const results = await semanticIndex.searchRaw({
+          query: body.slice(0, 8000), // truncate to embedding model limit
+          limit: (args.limit || 5) * 3, // overfetch to compensate for post-filtering
+          folder: args.folder,
+          threshold: args.threshold,
+          excludeFiles
+        });
+
+        // Filter out already-linked notes
+        const suggestions = [];
+        for (const r of results) {
+          if (suggestions.length >= (args.limit || 5)) break;
+          const basename = path.basename(r.path, ".md").toLowerCase();
+          if (linkedNames.has(basename)) continue;
+          suggestions.push(r);
+        }
+
+        if (suggestions.length === 0) {
+          return { content: [{ type: "text", text: "No link suggestions found." }] };
+        }
+
+        const formatted = suggestions.map(r =>
+          `**${r.path}** (score: ${r.score})\n${r.preview}`
+        ).join("\n\n");
+
+        return {
+          content: [{ type: "text", text: `Found ${suggestions.length} link suggestion${suggestions.length === 1 ? "" : "s"}:\n\n${formatted}` }]
+        };
       }
 
       default:
