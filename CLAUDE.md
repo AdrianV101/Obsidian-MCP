@@ -23,7 +23,7 @@ npm start
 
 The project consists of three parts:
 
-**MCP Server** (`mcp-server/index.js`): A Node.js ES module server implementing the Model Context Protocol. It provides 12 tools for vault interaction:
+**MCP Server** (`mcp-server/index.js`): A Node.js ES module server implementing the Model Context Protocol. It provides 13 tools for vault interaction:
 - `vault_read` - Read note contents
 - `vault_write` - Create new notes from templates (enforces frontmatter)
 - `vault_append` - Add content to existing files
@@ -33,10 +33,21 @@ The project consists of three parts:
 - `vault_suggest_links` - Suggest relevant notes to link to based on content similarity (requires `OPENAI_API_KEY`)
 - `vault_list` / `vault_recent` - Directory listing and recent files
 - `vault_links` - Wikilink analysis (`[[...]]` syntax)
+- `vault_neighborhood` - Graph context exploration via BFS wikilink traversal
 - `vault_query` - Query notes by YAML frontmatter (type, status, tags, dates)
 - `vault_tags` - Discover all tags with per-note counts; supports folder scoping, glob patterns, inline `#tag` parsing
 
 The server uses `VAULT_PATH` environment variable (defaults to `~/Documents/PKM`) and includes path security to prevent directory escaping.
+
+### vault_neighborhood (Graph Context Exploration)
+
+Explores the graph neighborhood around a note by traversing wikilinks using BFS. Returns notes grouped by hop distance with frontmatter metadata.
+
+- Resolves wikilink targets to actual file paths (handles `[[note]]`, `[[folder/note]]`, `[[note|alias]]`, `[[note#heading]]`)
+- Detects ambiguous links (multiple files with same basename) and annotates them
+- Per-call indexes: basename resolution map + incoming link index (no persistent state)
+- Params: `path` (required), `depth` (default: 2), `direction` (`"both"` | `"outgoing"` | `"incoming"`)
+- Implementation: `mcp-server/graph.js` module (link resolution, BFS traversal, formatting)
 
 ### vault_semantic_search (Semantic Similarity Search)
 

@@ -10,6 +10,8 @@ import fs from "fs/promises";
 import path from "path";
 import yaml from "js-yaml";
 import { SemanticIndex } from "./embeddings.js";
+import { exploreNeighborhood, formatNeighborhood } from "./graph.js";
+import { getAllMarkdownFiles } from "./utils.js";
 
 // Get vault path from environment
 const VAULT_PATH = process.env.VAULT_PATH || process.env.HOME + "/Documents/PKM";
@@ -29,22 +31,6 @@ function resolvePath(relativePath) {
     throw new Error("Path escapes vault directory");
   }
   return resolved;
-}
-
-// Helper: get all markdown files recursively
-async function getAllMarkdownFiles(dir, baseDir = dir) {
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-  const files = [];
-  
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory() && !entry.name.startsWith(".")) {
-      files.push(...await getAllMarkdownFiles(fullPath, baseDir));
-    } else if (entry.isFile() && entry.name.endsWith(".md")) {
-      files.push(path.relative(baseDir, fullPath));
-    }
-  }
-  return files;
 }
 
 // Helper: extract YAML frontmatter from markdown content
@@ -534,6 +520,24 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
       }
     },
     {
+      name: "vault_neighborhood",
+      description: "Explore the graph neighborhood around a note by traversing wikilinks. Returns notes grouped by hop distance from the starting note, with frontmatter metadata for each node. Useful for understanding clusters, finding related context, and discovering connections.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Path to the starting note (relative to vault root)" },
+          depth: { type: "number", description: "Traversal depth — how many hops to follow (default: 2)", default: 2 },
+          direction: {
+            type: "string",
+            enum: ["both", "outgoing", "incoming"],
+            description: "Link direction to follow (default: both)",
+            default: "both"
+          }
+        },
+        required: ["path"]
+      }
+    },
+    {
       name: "vault_query",
       description: "Query notes by YAML frontmatter metadata (type, status, tags, dates)",
       inputSchema: {
@@ -841,6 +845,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         
         return { content: [{ type: "text", text: output || "No links found" }] };
+      }
+
+      case "vault_neighborhood": {
+        const depth = args.depth || 2;
+        const direction = args.direction || "both";
+
+        const result = await exploreNeighborhood({
+          startPath: args.path,
+          vaultPath: VAULT_PATH,
+          depth,
+          direction,
+        });
+
+        const text = formatNeighborhood(result, {
+          startPath: args.path,
+          depth,
+          direction,
+        });
+
+        return { content: [{ type: "text", text }] };
       }
 
       case "vault_query": {

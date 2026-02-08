@@ -4,6 +4,7 @@ import fs from "fs/promises";
 import fsSync from "fs";
 import path from "path";
 import crypto from "crypto";
+import { getAllMarkdownFiles } from "./utils.js";
 
 const EMBEDDING_MODEL = "text-embedding-3-large";
 const EMBEDDING_DIMENSIONS = 3072;
@@ -597,17 +598,3 @@ function contentHash(text) {
   return crypto.createHash("sha256").update(text).digest("hex");
 }
 
-async function getAllMarkdownFiles(dir, baseDir = dir) {
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-  const files = [];
-
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory() && !entry.name.startsWith(".")) {
-      files.push(...await getAllMarkdownFiles(fullPath, baseDir));
-    } else if (entry.isFile() && entry.name.endsWith(".md")) {
-      files.push(path.relative(baseDir, fullPath));
-    }
-  }
-  return files;
-}
