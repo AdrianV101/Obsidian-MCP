@@ -9,8 +9,10 @@ import {
 import fs from "fs/promises";
 import path from "path";
 import yaml from "js-yaml";
+import crypto from "crypto";
 import { SemanticIndex } from "./embeddings.js";
 import { exploreNeighborhood, formatNeighborhood } from "./graph.js";
+import { ActivityLog } from "./activity.js";
 import { getAllMarkdownFiles } from "./utils.js";
 
 // Get vault path from environment
@@ -22,6 +24,10 @@ let templateDescriptions = "";
 
 // Semantic index (populated at startup if OPENAI_API_KEY is set)
 let semanticIndex = null;
+
+// Activity log (populated at startup)
+let activityLog = null;
+const SESSION_ID = crypto.randomUUID();
 
 // Helper: resolve path relative to vault
 function resolvePath(relativePath) {
@@ -565,6 +571,46 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
           include_inline: { type: "boolean", description: "Also parse inline #tags from note bodies (default: false, frontmatter only)", default: false }
         }
       }
+    },
+    {
+      name: "vault_activity",
+      description: "Query or clear the activity log. Shows tool calls made across sessions with timestamps and arguments. Use action 'query' to retrieve entries, 'clear' to delete entries.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          action: {
+            type: "string",
+            enum: ["query", "clear"],
+            description: "Action to perform (default: query)",
+            default: "query"
+          },
+          limit: {
+            type: "number",
+            description: "Max entries to return (query only, default: 50)",
+            default: 50
+          },
+          tool: {
+            type: "string",
+            description: "Filter by tool name (e.g., 'vault_read', 'vault_write')"
+          },
+          session: {
+            type: "string",
+            description: "Filter by session ID"
+          },
+          since: {
+            type: "string",
+            description: "Filter entries on or after this ISO timestamp (e.g., '2026-02-08')"
+          },
+          before: {
+            type: "string",
+            description: "Filter entries before this ISO timestamp"
+          },
+          path: {
+            type: "string",
+            description: "Filter by file path substring in arguments"
+          }
+        }
+      }
     }
   ];
 
@@ -605,6 +651,11 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
 // Handle tool calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
+
+  // Log activity (skip vault_activity to avoid noise)
+  if (name !== "vault_activity") {
+    try { activityLog?.log(name, args); } catch (e) { console.error(`Activity log: ${e.message}`); }
+  }
 
   try {
     switch (name) {
@@ -977,6 +1028,57 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case "vault_activity": {
+        const action = args.action || "query";
+
+        if (action === "query") {
+          const entries = activityLog?.query({
+            limit: args.limit || 50,
+            tool: args.tool,
+            session: args.session,
+            since: args.since,
+            before: args.before,
+            path: args.path
+          }) || [];
+
+          if (entries.length === 0) {
+            return {
+              content: [{ type: "text", text: `No activity entries found. (current session: ${SESSION_ID.slice(0, 8)})` }]
+            };
+          }
+
+          const formatted = entries.map(e => {
+            const ts = e.timestamp.replace("T", " ").slice(0, 19);
+            const sessionShort = e.session_id.slice(0, 8);
+            return `[${ts}] [${sessionShort}] ${e.tool_name}\n${e.args_json}`;
+          }).join("\n\n");
+
+          return {
+            content: [{
+              type: "text",
+              text: `Activity log (${entries.length} entr${entries.length === 1 ? "y" : "ies"}, current session: ${SESSION_ID.slice(0, 8)}):\n\n${formatted}`
+            }]
+          };
+        }
+
+        if (action === "clear") {
+          const deleted = activityLog?.clear({
+            session: args.session,
+            tool: args.tool,
+            before: args.before
+          }) || 0;
+
+          return {
+            content: [{
+              type: "text",
+              text: `Cleared ${deleted} activity entr${deleted === 1 ? "y" : "ies"}.`
+            }]
+          };
+        }
+
+        throw new Error(`Unknown action: ${action}. Use 'query' or 'clear'.`);
+      }
+
       case "vault_semantic_search": {
         if (!semanticIndex?.isAvailable) {
           throw new Error("Semantic search not available (OPENAI_API_KEY not set)");
@@ -1098,10 +1200,20 @@ async function initializeServer() {
     console.error("OPENAI_API_KEY not set — semantic search disabled");
   }
 
+  // Initialize activity log
+  try {
+    activityLog = new ActivityLog({ vaultPath: VAULT_PATH, sessionId: SESSION_ID });
+    await activityLog.initialize();
+    console.error(`Activity log initialized (session: ${SESSION_ID.slice(0, 8)})`);
+  } catch (err) {
+    console.error(`Activity log init failed (non-fatal): ${err.message}`);
+    activityLog = null;
+  }
+
   // Connect server
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(`PKM MCP Server running... (${templateRegistry.size} templates loaded${semanticIndex?.isAvailable ? ", semantic search enabled" : ""})`);
+  console.error(`PKM MCP Server running... (${templateRegistry.size} templates loaded${semanticIndex?.isAvailable ? ", semantic search enabled" : ""}, activity log ${activityLog ? "enabled" : "disabled"})`);
 }
 
 initializeServer();

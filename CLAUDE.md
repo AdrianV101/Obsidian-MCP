@@ -23,7 +23,7 @@ npm start
 
 The project consists of three parts:
 
-**MCP Server** (`mcp-server/index.js`): A Node.js ES module server implementing the Model Context Protocol. It provides 13 tools for vault interaction:
+**MCP Server** (`mcp-server/index.js`): A Node.js ES module server implementing the Model Context Protocol. It provides 14 tools for vault interaction:
 - `vault_read` - Read note contents
 - `vault_write` - Create new notes from templates (enforces frontmatter)
 - `vault_append` - Add content to existing files
@@ -36,6 +36,7 @@ The project consists of three parts:
 - `vault_neighborhood` - Graph context exploration via BFS wikilink traversal
 - `vault_query` - Query notes by YAML frontmatter (type, status, tags, dates)
 - `vault_tags` - Discover all tags with per-note counts; supports folder scoping, glob patterns, inline `#tag` parsing
+- `vault_activity` - Query/clear activity log (all tool calls with timestamps and session IDs)
 
 The server uses `VAULT_PATH` environment variable (defaults to `~/Documents/PKM`) and includes path security to prevent directory escaping.
 
@@ -79,6 +80,27 @@ vault_write({
   frontmatter: { tags: ["decision", "database"], deciders: "Team" }
 })
 ```
+
+### vault_activity (Session Memory / Activity Log)
+
+Logs all MCP tool calls with timestamps and session IDs. Enables cross-session memory — Claude can recall what was read, written, or searched in previous sessions.
+
+- Storage: SQLite DB at `$VAULT_PATH/.obsidian/activity-log.db` (separate from semantic index)
+- Session ID: generated via `crypto.randomUUID()` at MCP server startup (each conversation gets its own)
+- Logs every tool call except `vault_activity` itself
+- Supports filtering by tool name, session ID, date range, and path substring
+- Privacy: `action: "clear"` deletes entries (with optional filters), or delete the DB file
+
+```javascript
+vault_activity()                                    // Recent 50 entries
+vault_activity({ tool: "vault_write" })             // Only writes
+vault_activity({ since: "2026-02-08" })             // Today's activity
+vault_activity({ path: "01-Projects/MyApp" })       // Activity on specific project
+vault_activity({ action: "clear" })                 // Clear all history
+vault_activity({ action: "clear", before: "2026-01-01" })  // Clear old entries
+```
+
+Implementation: `mcp-server/activity.js` (ActivityLog class)
 
 **Templates** (`templates/`): Obsidian note templates for project documentation:
 - `project-index.md` - Project overview with YAML frontmatter
