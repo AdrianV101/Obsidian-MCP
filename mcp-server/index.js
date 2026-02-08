@@ -453,13 +453,14 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
     },
     {
       name: "vault_append",
-      description: "Append content to an existing file, optionally under a specific heading",
+      description: "Append content to an existing file, optionally under a specific heading. When 'position' is specified, heading is required and must exist in the file.",
       inputSchema: {
         type: "object",
         properties: {
           path: { type: "string", description: "Path relative to vault root" },
           content: { type: "string", description: "Content to append" },
-          heading: { type: "string", description: "Optional: append under this heading (e.g., '## Recent Activity')" }
+          heading: { type: "string", description: "Optional: append under this heading (e.g., '## Recent Activity')" },
+          position: { type: "string", enum: ["after_heading", "before_heading", "end_of_section"], description: "Where to insert relative to heading. after_heading: right after the heading line. before_heading: right before the heading line. end_of_section: at the end of the section (before the next same-or-higher-level heading, or EOF). Requires heading." }
         },
         required: ["path", "content"]
       }
@@ -732,10 +733,54 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         let newContent;
-        if (args.heading && existing.includes(args.heading)) {
-          // Insert after the heading
+        if (args.position) {
+          // Positional insert mode — heading is required and must exist
+          if (!args.heading) {
+            throw new Error("'heading' is required when 'position' is specified");
+          }
+          if (!existing.includes(args.heading)) {
+            throw new Error(`Heading not found in ${args.path}: ${args.heading}`);
+          }
+
           const headingIndex = existing.indexOf(args.heading);
-          const afterHeading = existing.indexOf("\n", headingIndex) + 1;
+          const headingLineEnd = existing.indexOf("\n", headingIndex);
+          const afterHeading = headingLineEnd === -1 ? existing.length : headingLineEnd + 1;
+
+          if (args.position === "before_heading") {
+            newContent = existing.slice(0, headingIndex) + args.content + "\n" + existing.slice(headingIndex);
+          } else if (args.position === "after_heading") {
+            newContent = existing.slice(0, afterHeading) + args.content + "\n" + existing.slice(afterHeading);
+          } else if (args.position === "end_of_section") {
+            // Find section end: next heading at same or higher level
+            const headingMatch = args.heading.match(/^(#{1,6})\s/);
+            const headingLevel = headingMatch ? headingMatch[1].length : 0;
+            let sectionEnd = existing.length;
+
+            if (headingLevel > 0) {
+              // Search line-by-line from after the heading
+              const lines = existing.slice(afterHeading).split("\n");
+              let offset = afterHeading;
+              for (const line of lines) {
+                const lineMatch = line.match(/^(#{1,6})\s/);
+                if (lineMatch && lineMatch[1].length <= headingLevel) {
+                  sectionEnd = offset;
+                  break;
+                }
+                offset += line.length + 1; // +1 for newline
+              }
+            }
+
+            // Insert before the section boundary, ensuring a newline separator
+            const before = existing.slice(0, sectionEnd);
+            const after = existing.slice(sectionEnd);
+            const separator = before.length > 0 && !before.endsWith("\n") ? "\n" : "";
+            newContent = before + separator + args.content + "\n" + after;
+          }
+        } else if (args.heading && existing.includes(args.heading)) {
+          // Legacy behavior: insert after heading (no position param)
+          const headingIndex = existing.indexOf(args.heading);
+          const headingLineEnd = existing.indexOf("\n", headingIndex);
+          const afterHeading = headingLineEnd === -1 ? existing.length : headingLineEnd + 1;
           newContent = existing.slice(0, afterHeading) + args.content + "\n" + existing.slice(afterHeading);
         } else {
           // Append to end
@@ -743,7 +788,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         await fs.writeFile(filePath, newContent, "utf-8");
-        return { content: [{ type: "text", text: `Appended to ${args.path}` }] };
+        return { content: [{ type: "text", text: `Appended to ${args.path}${args.position ? ` (${args.position})` : ""}` }] };
       }
 
       case "vault_edit": {
