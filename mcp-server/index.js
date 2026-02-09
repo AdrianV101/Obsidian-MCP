@@ -13,7 +13,7 @@ import crypto from "crypto";
 import { SemanticIndex } from "./embeddings.js";
 import { exploreNeighborhood, formatNeighborhood } from "./graph.js";
 import { ActivityLog } from "./activity.js";
-import { getAllMarkdownFiles } from "./utils.js";
+import { getAllMarkdownFiles, extractFrontmatter } from "./utils.js";
 
 // Get vault path from environment
 const VAULT_PATH = process.env.VAULT_PATH || process.env.HOME + "/Documents/PKM";
@@ -37,20 +37,6 @@ function resolvePath(relativePath) {
     throw new Error("Path escapes vault directory");
   }
   return resolved;
-}
-
-// Helper: extract YAML frontmatter from markdown content
-function extractFrontmatter(content) {
-  if (!content.startsWith("---")) return null;
-  const endIndex = content.indexOf("---", 3);
-  if (endIndex === -1) return null;
-
-  const yamlContent = content.slice(3, endIndex).trim();
-  try {
-    return yaml.load(yamlContent);
-  } catch (e) {
-    return null; // Invalid YAML
-  }
 }
 
 // Helper: check if metadata matches query filters
@@ -872,7 +858,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               const subItems = await getAllMarkdownFiles(path.join(listPath, entry.name));
               items.push(...subItems.map(f => `   📄 ${path.join(itemPath, f)}`));
             }
-          } else if (!args.pattern || entry.name.match(new RegExp(args.pattern.replace("*", ".*")))) {
+          } else if (!args.pattern || entry.name.match(new RegExp("^" + args.pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$"))) {
             items.push(`📄 ${itemPath}`);
           }
         }
@@ -1260,5 +1246,16 @@ async function initializeServer() {
   await server.connect(transport);
   console.error(`PKM MCP Server running... (${templateRegistry.size} templates loaded${semanticIndex?.isAvailable ? ", semantic search enabled" : ""}, activity log ${activityLog ? "enabled" : "disabled"})`);
 }
+
+// Graceful shutdown: close databases on termination
+function shutdown() {
+  console.error("Shutting down...");
+  if (semanticIndex) semanticIndex.shutdown();
+  if (activityLog) activityLog.shutdown();
+  process.exit(0);
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
 
 initializeServer();

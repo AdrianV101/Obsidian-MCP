@@ -1,5 +1,8 @@
 # Obsidian PKM MCP Server
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js >= 18](https://img.shields.io/badge/Node.js-%3E%3D18-green.svg)](https://nodejs.org/)
+
 An MCP (Model Context Protocol) server that gives Claude Code full read/write access to your Obsidian vault. 14 tools for note CRUD, full-text search, semantic search, graph traversal, metadata queries, and session activity tracking.
 
 ## Features
@@ -20,6 +23,14 @@ An MCP (Model Context Protocol) server that gives Claude Code full read/write ac
 | `vault_query` | Query notes by YAML frontmatter (type, status, tags, dates) |
 | `vault_tags` | Discover tags with counts; folder scoping, glob filters, inline tag parsing |
 | `vault_activity` | Session activity log for cross-conversation memory |
+
+## Prerequisites
+
+- **Node.js >= 18** (uses native `fetch` and ES modules)
+- **C++ build tools** for `better-sqlite3` native addon:
+  - **macOS**: `xcode-select --install`
+  - **Linux**: `sudo apt install build-essential python3` (Debian/Ubuntu) or equivalent
+  - **Windows**: Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the "Desktop development with C++" workload
 
 ## Quick Start
 
@@ -87,7 +98,7 @@ Vault/
 
 Copy the files from `templates/` into your vault's `05-Templates/` folder. `vault_write` loads all `.md` files from that directory at startup and enforces frontmatter on every note created.
 
-Included templates: `project-index`, `adr`, `devlog`, `permanent-note`. Add your own templates to `05-Templates/` and they become available to `vault_write` automatically.
+Included templates: `project-index`, `adr`, `devlog`, `permanent-note`, `research-note`, `troubleshooting-log`, `fleeting-note`, `literature-note`, `meeting-notes`, `moc`, `daily-note`. Add your own templates to `05-Templates/` and they become available to `vault_write` automatically.
 
 ### CLAUDE.md for Your Projects
 

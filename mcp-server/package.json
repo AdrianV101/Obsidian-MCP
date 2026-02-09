@@ -4,8 +4,29 @@
   "description": "MCP server for Obsidian vault integration with Claude Code",
   "main": "index.js",
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AdrianV101/PKM_MCP.git"
+  },
+  "author": "Adrian Verhoosel",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "obsidian",
+    "pkm",
+    "knowledge-management",
+    "claude-code",
+    "model-context-protocol"
+  ],
+  "homepage": "https://github.com/AdrianV101/PKM_MCP#readme",
+  "bugs": {
+    "url": "https://github.com/AdrianV101/PKM_MCP/issues"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

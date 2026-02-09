@@ -107,6 +107,13 @@ Implementation: `mcp-server/activity.js` (ActivityLog class)
 - `adr.md` - Architecture Decision Record format
 - `devlog.md` - Development log with session entries
 - `permanent-note.md` - Atomic evergreen notes
+- `research-note.md` - Research findings and analysis
+- `troubleshooting-log.md` - Bug investigations and fixes
+- `fleeting-note.md` - Quick captures and temporary thoughts
+- `literature-note.md` - Notes on articles, books, talks
+- `meeting-notes.md` - Meeting records
+- `moc.md` - Maps of Content (index/hub notes)
+- `daily-note.md` - Daily notes
 
 **Sample CLAUDE.md** (`sample-project/CLAUDE.md`): Template for code repositories to specify PKM integration paths, context loading, and documentation rules.
 

@@ -1,24 +1,8 @@
 import fs from "fs/promises";
 import path from "path";
-import yaml from "js-yaml";
-import { getAllMarkdownFiles } from "./utils.js";
+import { getAllMarkdownFiles, extractFrontmatter } from "./utils.js";
 
 const WIKILINK_REGEX = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
-
-// --- Utility Functions ---
-
-/** Extract YAML frontmatter from markdown content. */
-function extractFrontmatter(content) {
-  if (!content.startsWith("---")) return null;
-  const endIndex = content.indexOf("---", 3);
-  if (endIndex === -1) return null;
-  const yamlContent = content.slice(3, endIndex).trim();
-  try {
-    return yaml.load(yamlContent);
-  } catch {
-    return null;
-  }
-}
 
 /** Extract all wikilink targets from markdown content. */
 export function extractWikilinks(content) {
@@ -61,17 +45,17 @@ export function buildLinkResolutionMap(allFiles) {
  *
  * @param {string} linkTarget - raw wikilink target text
  * @param {Map<string, string[]>} resolutionMap - from buildLinkResolutionMap
- * @param {string[]} allFiles - vault-relative file paths (for exact path matching)
+ * @param {Set<string>} allFilesSet - vault-relative file paths as a Set (for O(1) exact path matching)
  * @returns {{ paths: string[], ambiguous: boolean }}
  */
-export function resolveLink(linkTarget, resolutionMap, allFiles) {
+export function resolveLink(linkTarget, resolutionMap, allFilesSet) {
   // Strip heading/block references: [[note#heading]] -> "note"
   const cleaned = linkTarget.split("#")[0].split("^")[0].trim();
   if (!cleaned) return { paths: [], ambiguous: false };
 
   // 1. Try exact path match (with .md extension)
   const withExt = cleaned.endsWith(".md") ? cleaned : cleaned + ".md";
-  if (allFiles.includes(withExt)) {
+  if (allFilesSet.has(withExt)) {
     return { paths: [withExt], ambiguous: false };
   }
 
@@ -90,16 +74,17 @@ export function resolveLink(linkTarget, resolutionMap, allFiles) {
  * @param {string} vaultPath - absolute vault path
  * @param {string[]} allFiles - vault-relative file paths
  * @param {Map<string, string[]>} resolutionMap - from buildLinkResolutionMap
+ * @param {Set<string>} allFilesSet - vault-relative file paths as a Set
  * @returns {Promise<Map<string, Set<string>>>} targetPath -> Set<sourcePath>
  */
-async function buildIncomingIndex(vaultPath, allFiles, resolutionMap) {
+async function buildIncomingIndex(vaultPath, allFiles, resolutionMap, allFilesSet) {
   const index = new Map(); // targetPath -> Set<sourcePath>
 
   for (const file of allFiles) {
     const content = await fs.readFile(path.join(vaultPath, file), "utf-8");
     const links = extractWikilinks(content);
     for (const link of links) {
-      const resolved = resolveLink(link, resolutionMap, allFiles);
+      const resolved = resolveLink(link, resolutionMap, allFilesSet);
       for (const targetPath of resolved.paths) {
         if (targetPath === file) continue; // skip self-links
         if (!index.has(targetPath)) {
@@ -165,11 +150,12 @@ export async function exploreNeighborhood({
 
   // Build indexes once
   const allFiles = await getAllMarkdownFiles(vaultPath);
+  const allFilesSet = new Set(allFiles);
   const resolutionMap = buildLinkResolutionMap(allFiles);
 
   const needIncoming = direction === "both" || direction === "incoming";
   const incomingIndex = needIncoming
-    ? await buildIncomingIndex(vaultPath, allFiles, resolutionMap)
+    ? await buildIncomingIndex(vaultPath, allFiles, resolutionMap, allFilesSet)
     : null;
 
   // BFS state
@@ -217,7 +203,7 @@ export async function exploreNeighborhood({
       if (needOutgoing) {
         const outgoing = extractWikilinks(content);
         for (const link of outgoing) {
-          const resolved = resolveLink(link, resolutionMap, allFiles);
+          const resolved = resolveLink(link, resolutionMap, allFilesSet);
           for (const targetPath of resolved.paths) {
             if (!visited.has(targetPath)) {
               nextQueue.push({
