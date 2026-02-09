@@ -499,6 +499,52 @@ export function buildBasenameMap(allFiles) {
 }
 
 /**
+ * Resolve a short or partial path to a full vault-relative path.
+ *
+ * Resolution order:
+ * 1. Exact match (path exists in allFilesSet as-is)
+ * 2. Exact match with .md appended
+ * 3. Basename match (with optional folder scoping)
+ *
+ * @param {string} inputPath - user-provided path (short name or full path)
+ * @param {Map<string, string[]>} basenameMap - from buildBasenameMap
+ * @param {Set<string>} allFilesSet - all vault-relative paths
+ * @param {string} [folderScope] - optional folder prefix to filter matches
+ * @returns {string} resolved vault-relative path
+ * @throws {Error} if path not found or ambiguous
+ */
+export function resolveFuzzyPath(inputPath, basenameMap, allFilesSet, folderScope) {
+  // 1. Exact match
+  if (allFilesSet.has(inputPath)) return inputPath;
+
+  // 2. Exact match with .md
+  if (!inputPath.endsWith(".md")) {
+    const withExt = inputPath + ".md";
+    if (allFilesSet.has(withExt)) return withExt;
+  }
+
+  // 3. Basename match
+  const basename = path.basename(inputPath, ".md").toLowerCase();
+  let matches = basenameMap.get(basename) || [];
+
+  // Apply folder scope if provided
+  if (folderScope && matches.length > 1) {
+    const scoped = matches.filter(p => p.startsWith(folderScope + "/") || p.startsWith(folderScope));
+    if (scoped.length > 0) matches = scoped;
+  }
+
+  if (matches.length === 1) return matches[0];
+  if (matches.length === 0) {
+    throw new Error(`File not found: "${inputPath}". No matching file in vault.`);
+  }
+
+  const list = matches.map(p => `  - ${p}`).join("\n");
+  throw new Error(
+    `"${inputPath}" matches ${matches.length} files:\n${list}\nUse a more specific path or add folder param to narrow scope.`
+  );
+}
+
+/**
  * Resolve a partial folder name to a full vault-relative directory path.
  *
  * Resolution order:
