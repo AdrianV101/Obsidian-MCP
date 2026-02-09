@@ -40,7 +40,8 @@ Be respectful, constructive, and inclusive. We follow the [Contributor Covenant]
 ```
 mcp-server/
   index.js        - MCP server setup, tool definitions, request routing
-  helpers.js      - Pure helper functions (path resolution, filtering, templates)
+  handlers.js     - Tool handler implementations (all 14 handlers)
+  helpers.js      - Pure helper functions (path resolution, filtering, templates, fuzzy matching)
   graph.js        - Wikilink resolution and BFS graph traversal
   embeddings.js   - Semantic search (OpenAI embeddings, SQLite + sqlite-vec)
   activity.js     - Activity logging (session tracking, SQLite)
