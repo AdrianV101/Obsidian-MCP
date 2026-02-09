@@ -221,7 +221,7 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
       };
     }
 
-    const newContent = content.replace(args.old_string, args.new_string);
+    const newContent = content.replace(args.old_string, () => args.new_string);
     await fs.writeFile(filePath, newContent, "utf-8");
     return { content: [{ type: "text", text: `Successfully edited ${args.path}` }] };
   }
@@ -276,7 +276,7 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
           const subItems = await getAllMarkdownFiles(path.join(listPath, entry.name));
           items.push(...subItems.map(f => `  ${path.join(itemPath, f)}`));
         }
-      } else if (!args.pattern || entry.name.match(new RegExp("^" + args.pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$"))) {
+      } else if (!args.pattern || entry.name.match(new RegExp("^" + args.pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*?") + "$"))) {
         items.push(itemPath);
       }
     }
@@ -348,7 +348,7 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
 
   async function handleNeighborhood(args) {
     const resolvedPath = resolveFuzzyPath(args.path, basenameMap, allFilesSet);
-    const depth = args.depth || 2;
+    const depth = Math.min(args.depth || 2, 5);
     const direction = args.direction || "both";
 
     const result = await exploreNeighborhood({

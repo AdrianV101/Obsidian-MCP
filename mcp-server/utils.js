@@ -9,7 +9,7 @@ export function extractFrontmatter(content) {
   if (endIndex === -1) return null;
   const yamlContent = content.slice(3, endIndex).trim();
   try {
-    return yaml.load(yamlContent);
+    return yaml.load(yamlContent, { schema: yaml.JSON_SCHEMA });
   } catch {
     return null;
   }

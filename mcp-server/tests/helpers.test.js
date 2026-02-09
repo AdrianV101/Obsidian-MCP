@@ -233,6 +233,34 @@ describe("substituteTemplateVariables", () => {
     assert.ok(result.includes("status: active"));
     assert.ok(!result.includes("status: draft"));
   });
+
+  it("rejects frontmatter keys with regex-special characters (M4 injection)", () => {
+    const content = "---\nstatus: draft\n---\n\n# Title";
+    assert.throws(
+      () => substituteTemplateVariables(content, {
+        frontmatter: { "key.*": "injected" },
+      }),
+      /Invalid frontmatter key/
+    );
+  });
+
+  it("rejects frontmatter keys starting with a digit", () => {
+    const content = "---\nstatus: draft\n---\n\n# Title";
+    assert.throws(
+      () => substituteTemplateVariables(content, {
+        frontmatter: { "1invalid": "value" },
+      }),
+      /Invalid frontmatter key/
+    );
+  });
+
+  it("allows valid frontmatter keys with hyphens and underscores", () => {
+    const content = "---\nmy-field_1: old\n---\n\n# Title";
+    const result = substituteTemplateVariables(content, {
+      frontmatter: { "my-field_1": "new" },
+    });
+    assert.ok(result.includes("my-field_1: new"));
+  });
 });
 
 describe("validateFrontmatterStrict", () => {
@@ -448,6 +476,35 @@ Nested content.
     assert.ok(range);
     const headingLine = doc.slice(range.headingStart, range.afterHeading);
     assert.ok(headingLine.startsWith("## Section One"));
+  });
+
+  it("does NOT match heading text embedded in a paragraph", () => {
+    const content = "# Title\n\nThis paragraph mentions ## Section One inline.\n\n## Section One\n\nReal content.\n";
+    const range = findSectionRange(content, "## Section One");
+    assert.ok(range, "Should find the real heading");
+    // headingStart must be at the line-start occurrence, not the inline one
+    const before = content.slice(0, range.headingStart);
+    assert.ok(before.includes("inline"), "The inline mention should be before the matched heading");
+    const section = content.slice(range.afterHeading, range.sectionEnd);
+    assert.ok(section.includes("Real content."));
+  });
+
+  it("does NOT match heading text mid-line (e.g. in inline content)", () => {
+    // The heading text appears mid-line, not at line start
+    const content = "# Title\n\nSee also: ## Section One is referenced here.\n\n## Section One\n\nReal content.\n";
+    const range = findSectionRange(content, "## Section One");
+    assert.ok(range, "Should find the line-anchored heading");
+    const section = content.slice(range.afterHeading, range.sectionEnd);
+    assert.ok(section.includes("Real content."));
+    // Ensure it did NOT match the mid-line occurrence
+    assert.ok(range.headingStart > content.indexOf("See also:"), "Should skip the mid-line match");
+  });
+
+  it("matches heading at the very start of the string", () => {
+    const content = "## Section One\n\nContent here.\n";
+    const range = findSectionRange(content, "## Section One");
+    assert.ok(range, "Should find heading at start of string");
+    assert.equal(range.headingStart, 0);
   });
 });
 

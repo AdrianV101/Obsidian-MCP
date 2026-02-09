@@ -1,7 +1,7 @@
 ---
 type: bug
 created: <% tp.date.now("YYYY-MM-DD") %>
-status: resolved
+status: investigating
 tags:
   - debugging
 ---

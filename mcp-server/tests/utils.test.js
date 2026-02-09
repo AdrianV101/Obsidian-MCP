@@ -56,4 +56,22 @@ describe("extractFrontmatter", () => {
     const fm = extractFrontmatter(content);
     assert.ok(fm.description.includes("multiline"));
   });
+
+  it("does not instantiate YAML type attacks (!!js/regexp)", () => {
+    // With JSON_SCHEMA, !!js/regexp should not produce a RegExp object
+    const content = "---\npattern: !!js/regexp /malicious/gi\n---\n";
+    const fm = extractFrontmatter(content);
+    // Should either return null (parse error) or a non-RegExp value
+    if (fm !== null) {
+      assert.ok(!(fm.pattern instanceof RegExp), "!!js/regexp should not create a RegExp object");
+    }
+  });
+
+  it("does not instantiate !!js/function attacks", () => {
+    const content = '---\nfn: !!js/function "function() { return 1; }"\n---\n';
+    const fm = extractFrontmatter(content);
+    if (fm !== null) {
+      assert.ok(typeof fm.fn !== "function", "!!js/function should not create a function");
+    }
+  });
 });

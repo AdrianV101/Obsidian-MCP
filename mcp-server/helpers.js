@@ -255,6 +255,9 @@ export function substituteTemplateVariables(content, vars) {
       for (const [key, value] of Object.entries(vars.frontmatter)) {
         if (key === "tags") continue;
         if (typeof value === "string") {
+          if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(key)) {
+            throw new Error(`Invalid frontmatter key: "${key}". Keys must start with a letter and contain only letters, digits, hyphens, or underscores.`);
+          }
           const fieldRegex = new RegExp(`^${key}:.*$`, "m");
           if (updatedFrontmatter.match(fieldRegex)) {
             updatedFrontmatter = updatedFrontmatter.replace(fieldRegex, `${key}: ${value}`);
@@ -359,7 +362,18 @@ export function parseHeadingLevel(line) {
  * @returns {{ headingStart: number, afterHeading: number, sectionEnd: number } | null}
  */
 export function findSectionRange(content, heading) {
-  const headingStart = content.indexOf(heading);
+  let headingStart = -1;
+  let searchFrom = 0;
+  while (searchFrom < content.length) {
+    const idx = content.indexOf(heading, searchFrom);
+    if (idx === -1) break;
+    // Only match at line boundaries: start of string or preceded by \n
+    if (idx === 0 || content[idx - 1] === "\n") {
+      headingStart = idx;
+      break;
+    }
+    searchFrom = idx + 1;
+  }
   if (headingStart === -1) return null;
 
   const headingLineEnd = content.indexOf("\n", headingStart);

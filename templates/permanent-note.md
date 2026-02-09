@@ -1,7 +1,7 @@
 ---
 type: permanent
 created: <% tp.date.now("YYYY-MM-DD") %>
-tags: []
+tags: [permanent]
 ---
 
 # <% tp.file.title %>

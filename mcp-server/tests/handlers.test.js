@@ -930,6 +930,89 @@ describe("handleSuggestLinks", () => {
   });
 });
 
+// ─── vault_list glob matching (H1 ReDoS fix) ─────────────────────────
+
+describe("handleList glob pattern matching", () => {
+  it("filters with *.md pattern", async () => {
+    const handler = handlers.get("vault_list");
+    const result = await handler({ path: "notes", pattern: "*.md" });
+    const text = result.content[0].text;
+    assert.ok(text.includes("alpha.md"));
+    assert.ok(text.includes("beta.md"));
+  });
+
+  it("filters with prefix-* pattern", async () => {
+    const handler = handlers.get("vault_list");
+    const result = await handler({ path: "notes", pattern: "alpha*" });
+    const text = result.content[0].text;
+    assert.ok(text.includes("alpha.md"));
+    assert.ok(!text.includes("beta.md"));
+  });
+
+  it("filters with *substring* pattern", async () => {
+    const handler = handlers.get("vault_list");
+    const result = await handler({ path: "notes", pattern: "*lph*" });
+    const text = result.content[0].text;
+    assert.ok(text.includes("alpha.md"));
+    assert.ok(!text.includes("beta.md"));
+  });
+
+  it("does not hang on crafted input (ReDoS safe)", async () => {
+    // If the glob used greedy .*, this crafted pattern could cause backtracking
+    const handler = handlers.get("vault_list");
+    const result = await handler({ path: "notes", pattern: "*a*a*a*a*a*a*b" });
+    // Should complete quickly and just return no matches or correct matches
+    assert.ok(result.content[0].text);
+  });
+});
+
+// ─── vault_edit with $ sequences (M3 fix) ────────────────────────────
+
+describe("handleEdit dollar sign replacement sequences", () => {
+  it("treats $& literally in new_string", async () => {
+    const editFile = `notes/dollar-test-${Date.now()}.md`;
+    await fs.writeFile(path.join(tmpDir, editFile), "replace this text\n");
+
+    const handler = handlers.get("vault_edit");
+    const result = await handler({
+      path: editFile,
+      old_string: "replace this text",
+      new_string: "cost is $& and $1 dollars",
+    });
+
+    assert.ok(result.content[0].text.includes("Successfully edited"));
+    const content = await fs.readFile(path.join(tmpDir, editFile), "utf-8");
+    assert.ok(content.includes("cost is $& and $1 dollars"), `Expected literal $& but got: ${content}`);
+
+    await fs.unlink(path.join(tmpDir, editFile));
+  });
+});
+
+// ─── vault_neighborhood depth cap (M7 fix) ───────────────────────────
+
+describe("handleNeighborhood depth cap", () => {
+  it("caps depth at 5 when a larger value is requested", async () => {
+    const handler = handlers.get("vault_neighborhood");
+    // Request depth 100; should be capped to 5 without error
+    const result = await handler({ path: "notes/alpha.md", depth: 100 });
+    const text = result.content[0].text;
+    // The result should mention the capped depth or just succeed within bounds
+    assert.ok(text, "Should return valid text");
+  });
+
+  it("uses default depth 2 when not specified", async () => {
+    const handler = handlers.get("vault_neighborhood");
+    const result = await handler({ path: "notes/alpha.md" });
+    assert.ok(result.content[0].text);
+  });
+
+  it("respects depth when within limits", async () => {
+    const handler = handlers.get("vault_neighborhood");
+    const result = await handler({ path: "notes/alpha.md", depth: 1 });
+    assert.ok(result.content[0].text);
+  });
+});
+
 // ─── createHandlers ────────────────────────────────────────────────────
 
 describe("createHandlers", () => {

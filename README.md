@@ -2,6 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js >= 18](https://img.shields.io/badge/Node.js-%3E%3D18-green.svg)](https://nodejs.org/)
+[![CI](https://github.com/AdrianV101/Obsidian-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/AdrianV101/Obsidian-MCP/actions/workflows/ci.yml)
 
 An MCP (Model Context Protocol) server that gives Claude Code full read/write access to your Obsidian vault. 14 tools for note CRUD, full-text search, semantic search, graph traversal, metadata queries, and session activity tracking.
 
@@ -181,6 +182,10 @@ All paths passed to tools are relative to vault root. The server includes path s
 **Graph exploration** resolves `[[wikilinks]]` to file paths (handling aliases, headings, and ambiguous basenames), then does BFS traversal to return notes grouped by hop distance.
 
 **Activity logging** records every tool call with timestamps and session IDs, enabling Claude to recall what happened in previous conversations.
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style guidelines, and the pull request process before submitting changes.
 
 ## License
 
