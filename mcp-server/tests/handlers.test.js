@@ -115,6 +115,19 @@ tags:
 A permanent note with no outgoing links.
 `);
 
+  // Create nested directory for fuzzy folder testing
+  const projectDir = path.join(tmpDir, "projects", "my-app", "research");
+  await fs.mkdir(projectDir, { recursive: true });
+  await fs.writeFile(path.join(projectDir, "findings.md"), `---
+type: research
+created: 2026-01-01
+tags:
+  - research
+  - project
+---
+# Research Findings
+`);
+
   // Create files for ambiguity testing
   const otherDir = path.join(tmpDir, "other");
   await fs.mkdir(otherDir, { recursive: true });
@@ -326,6 +339,19 @@ describe("fuzzy folder resolution", () => {
     assert.match(result.content[0].text, /dev/);
   });
 
+  it("vault_search resolves partial folder name (fuzzy)", async () => {
+    const search = handlers.get("vault_search");
+    // "my-app" should resolve to "projects/my-app" via substring match
+    const result = await search({ query: "Findings", folder: "my-app" });
+    assert.match(result.content[0].text, /findings/);
+  });
+
+  it("vault_query resolves partial folder name (fuzzy)", async () => {
+    const query = handlers.get("vault_query");
+    const result = await query({ type: "research", folder: "my-app" });
+    assert.match(result.content[0].text, /findings/);
+  });
+
   it("vault_search rejects unknown folder", async () => {
     const search = handlers.get("vault_search");
     await assert.rejects(
@@ -334,6 +360,14 @@ describe("fuzzy folder resolution", () => {
         assert.match(err.message, /not found|No matching|ENOENT/i);
         return true;
       }
+    );
+  });
+
+  it("folder resolution rejects directory traversal", async () => {
+    const search = handlers.get("vault_search");
+    await assert.rejects(
+      () => search({ query: "test", folder: "../../etc" }),
+      /escapes vault/
     );
   });
 });

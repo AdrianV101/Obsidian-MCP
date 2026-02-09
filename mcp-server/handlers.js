@@ -44,12 +44,14 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
 
   /** Resolve a folder path with fuzzy fallback. */
   const resolveFolder = (folder) => {
-    // Try exact first
-    try {
-      return resolvePath(folder);
-    } catch {
-      // Not a direct vault-relative path — try fuzzy
-    }
+    // Security check first — reject traversal attempts immediately
+    const exactResolved = resolvePath(folder);
+
+    // Check if this is a known directory (any file has it as a prefix)
+    const isKnownDir = Array.from(allFilesSet).some(f => f.startsWith(folder + "/") || f.startsWith(folder + path.sep));
+    if (isKnownDir) return exactResolved;
+
+    // Not a known directory — try fuzzy resolution
     const resolvedFolder = resolveFuzzyFolder(folder, Array.from(allFilesSet));
     return resolvePath(resolvedFolder);
   };
@@ -307,9 +309,10 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
   }
 
   async function handleLinks(args) {
-    const filePath = resolveFile(args.path);
+    const resolvedVaultRelative = resolveFuzzyPath(args.path, basenameMap, allFilesSet);
+    const filePath = resolvePath(resolvedVaultRelative);
     const content = await fs.readFile(filePath, "utf-8");
-    const fileName = path.basename(args.path, ".md");
+    const fileName = path.basename(resolvedVaultRelative, ".md");
 
     const result = { outgoing: [], incoming: [] };
 
@@ -324,7 +327,7 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     if (args.direction !== "outgoing") {
       const allFiles = await getAllMarkdownFiles(vaultPath);
       for (const file of allFiles) {
-        if (file === args.path) continue;
+        if (file === resolvedVaultRelative) continue;
         const fileContent = await fs.readFile(path.join(vaultPath, file), "utf-8");
         if (fileContent.includes(`[[${fileName}]]`) || fileContent.includes(`[[${fileName}|`)) {
           result.incoming.push(file);

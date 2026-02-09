@@ -529,7 +529,7 @@ export function resolveFuzzyPath(inputPath, basenameMap, allFilesSet, folderScop
 
   // Apply folder scope if provided
   if (folderScope && matches.length > 1) {
-    const scoped = matches.filter(p => p.startsWith(folderScope + "/") || p.startsWith(folderScope));
+    const scoped = matches.filter(p => p.startsWith(folderScope + "/"));
     if (scoped.length > 0) matches = scoped;
   }
 
