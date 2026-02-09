@@ -14,6 +14,7 @@ import {
   extractTailSections,
   buildBasenameMap,
   resolveFuzzyPath,
+  resolveFuzzyFolder,
 } from "./helpers.js";
 import { exploreNeighborhood, formatNeighborhood } from "./graph.js";
 import { getAllMarkdownFiles, extractFrontmatter } from "./utils.js";
@@ -39,6 +40,18 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
   const resolveFile = (inputPath) => {
     const resolved = resolveFuzzyPath(inputPath, basenameMap, allFilesSet);
     return resolvePath(resolved);
+  };
+
+  /** Resolve a folder path with fuzzy fallback. */
+  const resolveFolder = (folder) => {
+    // Try exact first
+    try {
+      return resolvePath(folder);
+    } catch {
+      // Not a direct vault-relative path — try fuzzy
+    }
+    const resolvedFolder = resolveFuzzyFolder(folder, Array.from(allFilesSet));
+    return resolvePath(resolvedFolder);
   };
 
   async function handleRead(args) {
@@ -212,7 +225,7 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
   }
 
   async function handleSearch(args) {
-    const searchDir = args.folder ? resolvePath(args.folder) : vaultPath;
+    const searchDir = args.folder ? resolveFolder(args.folder) : vaultPath;
     const files = await getAllMarkdownFiles(searchDir);
     const results = [];
     const query = args.query.toLowerCase();
@@ -270,7 +283,7 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
   }
 
   async function handleRecent(args) {
-    const searchDir = args.folder ? resolvePath(args.folder) : vaultPath;
+    const searchDir = args.folder ? resolveFolder(args.folder) : vaultPath;
     const files = await getAllMarkdownFiles(searchDir);
     const limit = args.limit || 10;
 
@@ -352,7 +365,7 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
   }
 
   async function handleQuery(args) {
-    const searchDir = args.folder ? resolvePath(args.folder) : vaultPath;
+    const searchDir = args.folder ? resolveFolder(args.folder) : vaultPath;
     const files = await getAllMarkdownFiles(searchDir);
     const limit = args.limit || 50;
     const results = [];
@@ -402,7 +415,7 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
   }
 
   async function handleTags(args) {
-    const searchDir = args.folder ? resolvePath(args.folder) : vaultPath;
+    const searchDir = args.folder ? resolveFolder(args.folder) : vaultPath;
     const files = await getAllMarkdownFiles(searchDir);
     const tagCounts = new Map();
     let notesWithTags = 0;

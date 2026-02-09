@@ -299,6 +299,45 @@ describe("fuzzy path resolution (read tools)", () => {
   });
 });
 
+// ─── fuzzy folder resolution ─────────────────────────────────────────
+
+describe("fuzzy folder resolution", () => {
+  it("vault_search resolves exact folder name", async () => {
+    const search = handlers.get("vault_search");
+    const result = await search({ query: "Devlog", folder: "notes" });
+    assert.match(result.content[0].text, /devlog/);
+  });
+
+  it("vault_query resolves exact folder name", async () => {
+    const query = handlers.get("vault_query");
+    const result = await query({ type: "devlog", folder: "notes" });
+    assert.match(result.content[0].text, /devlog/);
+  });
+
+  it("vault_recent resolves exact folder name", async () => {
+    const recent = handlers.get("vault_recent");
+    const result = await recent({ folder: "notes" });
+    assert.match(result.content[0].text, /\.md/);
+  });
+
+  it("vault_tags resolves exact folder name", async () => {
+    const tags = handlers.get("vault_tags");
+    const result = await tags({ folder: "notes" });
+    assert.match(result.content[0].text, /dev/);
+  });
+
+  it("vault_search rejects unknown folder", async () => {
+    const search = handlers.get("vault_search");
+    await assert.rejects(
+      () => search({ query: "test", folder: "nonexistent-folder-xyz" }),
+      (err) => {
+        assert.match(err.message, /not found|No matching|ENOENT/i);
+        return true;
+      }
+    );
+  });
+});
+
 // ─── vault_write ───────────────────────────────────────────────────────
 
 describe("handleWrite", () => {
