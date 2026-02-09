@@ -115,6 +115,26 @@ tags:
 A permanent note with no outgoing links.
 `);
 
+  // Create files for ambiguity testing
+  const otherDir = path.join(tmpDir, "other");
+  await fs.mkdir(otherDir, { recursive: true });
+  await fs.writeFile(path.join(otherDir, "index.md"), `---
+type: fleeting
+created: 2026-01-01
+tags:
+  - test
+---
+# Other Index
+`);
+  await fs.writeFile(path.join(notesDir, "index.md"), `---
+type: fleeting
+created: 2026-01-01
+tags:
+  - test
+---
+# Notes Index
+`);
+
   // Build template registry (mimicking what index.js does)
   const templateRegistry = new Map();
   const templateFiles = await fs.readdir(templateDir);
@@ -124,7 +144,7 @@ A permanent note with no outgoing links.
     templateRegistry.set(name, { content, description: name });
   }
 
-  handlers = createHandlers({
+  handlers = await createHandlers({
     vaultPath: tmpDir,
     templateRegistry,
     semanticIndex: null,
@@ -149,12 +169,12 @@ describe("handleRead", () => {
 
   it("throws on non-existent file", async () => {
     const handler = handlers.get("vault_read");
-    await assert.rejects(() => handler({ path: "notes/nonexistent.md" }), { code: "ENOENT" });
+    await assert.rejects(() => handler({ path: "notes/nonexistent.md" }), /not found|No matching file/i);
   });
 
   it("throws on directory traversal", async () => {
     const handler = handlers.get("vault_read");
-    await assert.rejects(() => handler({ path: "../etc/passwd" }), /escapes vault/);
+    await assert.rejects(() => handler({ path: "../etc/passwd" }), /not found|escapes vault/i);
   });
 
   it("returns full content when no pagination params given (regression)", async () => {
@@ -232,6 +252,50 @@ describe("handleRead", () => {
       () => handler({ path: "notes/devlog.md", tail: 5, tail_sections: 2 }),
       /Only one of/
     );
+  });
+});
+
+// ─── fuzzy path resolution (read tools) ─────────────────────────────
+
+describe("fuzzy path resolution (read tools)", () => {
+  it("vault_read resolves basename without extension", async () => {
+    const read = handlers.get("vault_read");
+    const result = await read({ path: "alpha" });
+    assert.match(result.content[0].text, /Alpha Note/);
+  });
+
+  it("vault_read resolves basename with .md extension", async () => {
+    const read = handlers.get("vault_read");
+    const result = await read({ path: "alpha.md" });
+    assert.match(result.content[0].text, /Alpha Note/);
+  });
+
+  it("vault_read still works with exact path", async () => {
+    const read = handlers.get("vault_read");
+    const result = await read({ path: "notes/alpha.md" });
+    assert.match(result.content[0].text, /Alpha Note/);
+  });
+
+  it("vault_read throws on ambiguous basename", async () => {
+    await assert.rejects(
+      () => handlers.get("vault_read")({ path: "index" }),
+      (err) => {
+        assert.match(err.message, /matches \d+ files/);
+        return true;
+      }
+    );
+  });
+
+  it("vault_links resolves fuzzy path", async () => {
+    const links = handlers.get("vault_links");
+    const result = await links({ path: "alpha" });
+    assert.ok(result.content[0].text);
+  });
+
+  it("vault_neighborhood resolves fuzzy path", async () => {
+    const neighborhood = handlers.get("vault_neighborhood");
+    const result = await neighborhood({ path: "alpha", depth: 1 });
+    assert.match(result.content[0].text, /alpha/);
   });
 });
 
@@ -781,7 +845,7 @@ describe("handleSuggestLinks", () => {
 
   it("throws when neither content nor path provided", async () => {
     // Create handlers with a mock semantic index that has isAvailable=true
-    const mockHandlers = createHandlers({
+    const mockHandlers = await createHandlers({
       vaultPath: tmpDir,
       templateRegistry: new Map(),
       semanticIndex: { isAvailable: true },

@@ -12,6 +12,8 @@ import {
   findSectionRange,
   listHeadings,
   extractTailSections,
+  buildBasenameMap,
+  resolveFuzzyPath,
 } from "./helpers.js";
 import { exploreNeighborhood, formatNeighborhood } from "./graph.js";
 import { getAllMarkdownFiles, extractFrontmatter } from "./utils.js";
@@ -26,11 +28,21 @@ import { getAllMarkdownFiles, extractFrontmatter } from "./utils.js";
  * @param {string} ctx.sessionId - current session UUID
  * @returns {Map<string, function>} tool name to handler function
  */
-export function createHandlers({ vaultPath, templateRegistry, semanticIndex, activityLog, sessionId }) {
+export async function createHandlers({ vaultPath, templateRegistry, semanticIndex, activityLog, sessionId }) {
   const resolvePath = (relativePath) => resolvePathBase(relativePath, vaultPath);
 
+  // Build basename map for fuzzy path resolution (read-only tools)
+  const allFiles = await getAllMarkdownFiles(vaultPath);
+  const { basenameMap, allFilesSet } = buildBasenameMap(allFiles);
+
+  /** Resolve a file path with fuzzy fallback (for read-only tools). */
+  const resolveFile = (inputPath) => {
+    const resolved = resolveFuzzyPath(inputPath, basenameMap, allFilesSet);
+    return resolvePath(resolved);
+  };
+
   async function handleRead(args) {
-    const filePath = resolvePath(args.path);
+    const filePath = resolveFile(args.path);
     const content = await fs.readFile(filePath, "utf-8");
 
     // Validate mutual exclusivity
@@ -107,6 +119,14 @@ export function createHandlers({ vaultPath, templateRegistry, semanticIndex, act
     }
 
     await fs.writeFile(filePath, substituted, "utf-8");
+
+    // Update basename map with the new file
+    const newBasename = path.basename(outputPath, ".md").toLowerCase();
+    if (!basenameMap.has(newBasename)) {
+      basenameMap.set(newBasename, []);
+    }
+    basenameMap.get(newBasename).push(outputPath);
+    allFilesSet.add(outputPath);
 
     const fm = validation.frontmatter;
     const createdStr = fm.created instanceof Date
@@ -274,7 +294,7 @@ export function createHandlers({ vaultPath, templateRegistry, semanticIndex, act
   }
 
   async function handleLinks(args) {
-    const filePath = resolvePath(args.path);
+    const filePath = resolveFile(args.path);
     const content = await fs.readFile(filePath, "utf-8");
     const fileName = path.basename(args.path, ".md");
 
@@ -311,18 +331,19 @@ export function createHandlers({ vaultPath, templateRegistry, semanticIndex, act
   }
 
   async function handleNeighborhood(args) {
+    const resolvedPath = resolveFuzzyPath(args.path, basenameMap, allFilesSet);
     const depth = args.depth || 2;
     const direction = args.direction || "both";
 
     const result = await exploreNeighborhood({
-      startPath: args.path,
+      startPath: resolvedPath,
       vaultPath,
       depth,
       direction,
     });
 
     const text = formatNeighborhood(result, {
-      startPath: args.path,
+      startPath: resolvedPath,
       depth,
       direction,
     });
@@ -509,7 +530,7 @@ export function createHandlers({ vaultPath, templateRegistry, semanticIndex, act
       throw new Error("Either 'content' or 'path' must be provided");
     }
     if (!inputText) {
-      const filePath = resolvePath(sourcePath);
+      const filePath = resolveFile(sourcePath);
       inputText = await fs.readFile(filePath, "utf-8");
     }
 

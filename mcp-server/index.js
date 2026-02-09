@@ -357,7 +357,7 @@ async function initializeServer() {
     activityLog = null;
   }
 
-  handlers = createHandlers({
+  handlers = await createHandlers({
     vaultPath: VAULT_PATH,
     templateRegistry,
     semanticIndex,
