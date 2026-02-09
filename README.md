@@ -35,6 +35,33 @@ Without this, every Claude Code session starts from scratch. With it, your AI as
 | `vault_tags` | Discover tags with counts; folder scoping, glob filters, inline tag parsing |
 | `vault_activity` | Session activity log for cross-conversation memory |
 
+### Fuzzy Path Resolution
+
+Read-only tools accept short names that resolve to full vault paths:
+
+```javascript
+vault_read({ path: "devlog" })
+// Resolves to: 01-Projects/Obsidian-MCP/development/devlog.md
+
+vault_read({ path: "devlog.md" })
+// Same result — .md extension is optional
+
+vault_links({ path: "alpha" })
+// Works on vault_links, vault_neighborhood, vault_suggest_links too
+```
+
+Folder-scoped tools accept partial folder names:
+
+```javascript
+vault_search({ query: "API design", folder: "Obsidian-MCP" })
+// Resolves folder to: 01-Projects/Obsidian-MCP
+
+vault_tags({ folder: "Obsidian-MCP" })
+// Works on vault_search, vault_query, vault_tags, vault_recent
+```
+
+Ambiguous matches return an error listing candidates. Exact paths always work unchanged.
+
 ## Prerequisites
 
 - **Node.js >= 18** (uses native `fetch` and ES modules)

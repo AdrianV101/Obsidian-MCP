@@ -108,6 +108,24 @@ vault_activity({ action: "clear", before: "2026-01-01" })  // Clear old entries
 
 Implementation: `mcp-server/activity.js` (ActivityLog class)
 
+### Fuzzy Path Resolution
+
+Read-only tools (`vault_read`, `vault_links`, `vault_neighborhood`, `vault_suggest_links`) support fuzzy path resolution:
+- Exact paths still work as before (zero overhead)
+- Short names resolve by basename: `"devlog"` → `"01-Projects/MyApp/development/devlog.md"`
+- `.md` extension is optional: `"devlog"` and `"devlog.md"` both work
+- Ambiguous names (multiple files with same basename) return an error listing all candidates
+- Use a more specific path or the `folder` param to disambiguate
+
+Folder-scoped tools (`vault_search`, `vault_query`, `vault_tags`, `vault_recent`) support fuzzy folder resolution:
+- Exact folder paths still work as before
+- Partial names match by substring: `"Obsidian-MCP"` → `"01-Projects/Obsidian-MCP"`
+- Ambiguous matches return an error listing candidates
+
+Write tools (`vault_write`, `vault_append`, `vault_edit`) require exact paths to prevent accidental modifications.
+
+Implementation: `mcp-server/helpers.js` (`buildBasenameMap`, `resolveFuzzyPath`, `resolveFuzzyFolder`)
+
 **Templates** (`templates/`): Obsidian note templates for project documentation:
 - `project-index.md` - Project overview with YAML frontmatter
 - `adr.md` - Architecture Decision Record format
