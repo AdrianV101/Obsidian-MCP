@@ -85,9 +85,9 @@ Vault/
 
 ### Templates
 
-Copy the files from `templates/` into your vault's `05-Templates/` folder. `vault_write` loads templates from there and enforces frontmatter on every note created.
+Copy the files from `templates/` into your vault's `05-Templates/` folder. `vault_write` loads all `.md` files from that directory at startup and enforces frontmatter on every note created.
 
-Available templates: `project-index`, `adr`, `devlog`, `permanent-note`
+Included templates: `project-index`, `adr`, `devlog`, `permanent-note`. Add your own templates to `05-Templates/` and they become available to `vault_write` automatically.
 
 ### CLAUDE.md for Your Projects
 
