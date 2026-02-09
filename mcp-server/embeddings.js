@@ -33,6 +33,8 @@ export class SemanticIndex {
     this.watcher = null;
     this._debounceTimers = new Map();
     this._syncState = { syncing: false, total: 0, done: 0 };
+    this._inflight = new Set();
+    this._abortController = null;
   }
 
   get isAvailable() {
@@ -48,6 +50,7 @@ export class SemanticIndex {
     this.db = new Database(this.dbPath);
     sqliteVec.load(this.db);
     this.db.pragma("journal_mode = WAL");
+    this.db.pragma("journal_size_limit = 32000000");
 
     // Create schema
     this.db.exec(`
@@ -76,6 +79,7 @@ export class SemanticIndex {
     `);
 
     // Start background sync (non-blocking)
+    this._abortController = new AbortController();
     this._startupSync().catch(err => {
       console.error(`Semantic index startup sync error: ${err.message}`);
     });
@@ -85,6 +89,10 @@ export class SemanticIndex {
   }
 
   async shutdown() {
+    if (this._abortController) {
+      this._abortController.abort();
+      this._abortController = null;
+    }
     if (this.watcher) {
       this.watcher.close();
       this.watcher = null;
@@ -93,10 +101,22 @@ export class SemanticIndex {
       clearTimeout(timer);
     }
     this._debounceTimers.clear();
+    if (this._inflight.size > 0) {
+      await Promise.allSettled([...this._inflight]);
+    }
     if (this.db) {
       this.db.close();
       this.db = null;
     }
+  }
+
+  /** Track a reindexFile call so shutdown() can await it. */
+  _trackedReindex(relativePath) {
+    const p = this.reindexFile(relativePath).finally(() => {
+      this._inflight.delete(p);
+    });
+    this._inflight.add(p);
+    return p;
   }
 
   /**
@@ -418,8 +438,12 @@ export class SemanticIndex {
 
       // Process in batches
       for (let i = 0; i < toReindex.length; i += REINDEX_BATCH_SIZE) {
+        if (this._abortController?.signal.aborted) {
+          console.error("Semantic index: startup sync aborted");
+          break;
+        }
         const batch = toReindex.slice(i, i + REINDEX_BATCH_SIZE);
-        const results = await Promise.allSettled(batch.map(f => this.reindexFile(f)));
+        const results = await Promise.allSettled(batch.map(f => this._trackedReindex(f)));
         const failures = results.filter(r => r.status === "rejected");
         if (failures.length > 0) {
           console.error(`Semantic index: ${failures.length} files failed in batch`);
@@ -458,7 +482,7 @@ export class SemanticIndex {
           try {
             // Check if file still exists
             await fs.access(path.resolve(this.vaultPath, relativePath));
-            await this.reindexFile(relativePath);
+            await this._trackedReindex(relativePath);
           } catch (e) {
             if (e.code === "ENOENT") {
               this.removeFile(relativePath);

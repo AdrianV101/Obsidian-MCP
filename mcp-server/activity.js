@@ -27,6 +27,7 @@ export class ActivityLog {
 
     this.db = new Database(this.dbPath);
     this.db.pragma("journal_mode = WAL");
+    this.db.pragma("journal_size_limit = 32000000");
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS activity (

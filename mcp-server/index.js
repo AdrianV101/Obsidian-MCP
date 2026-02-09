@@ -366,14 +366,28 @@ async function initializeServer() {
   console.error(`PKM MCP Server running... (${templateRegistry.size} templates loaded${semanticIndex?.isAvailable ? ", semantic search enabled" : ""}, activity log ${activityLog ? "enabled" : "disabled"})`);
 }
 
-function shutdown() {
+let shuttingDown = false;
+
+async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
   console.error("Shutting down...");
-  if (semanticIndex) semanticIndex.shutdown();
+  const forceTimer = setTimeout(() => {
+    console.error("Shutdown timed out, forcing exit");
+    process.exit(1);
+  }, 5000);
+  forceTimer.unref();
+  try {
+    if (semanticIndex) await semanticIndex.shutdown();
+  } catch (e) {
+    console.error(`Semantic index shutdown error: ${e.message}`);
+  }
   if (activityLog) activityLog.shutdown();
+  clearTimeout(forceTimer);
   process.exit(0);
 }
 
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+process.on("SIGINT", () => shutdown());
+process.on("SIGTERM", () => shutdown());
 
 initializeServer();

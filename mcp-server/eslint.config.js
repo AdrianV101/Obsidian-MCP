@@ -16,6 +16,7 @@ export default [
         Float32Array: "readonly",
         BigInt: "readonly",
         AbortSignal: "readonly",
+        AbortController: "readonly",
         Map: "readonly",
         Set: "readonly",
       },
