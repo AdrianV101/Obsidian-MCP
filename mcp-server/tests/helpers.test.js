@@ -11,6 +11,10 @@ import {
   validateFrontmatterStrict,
   extractInlineTags,
   matchesTagPattern,
+  parseHeadingLevel,
+  findSectionRange,
+  listHeadings,
+  extractTailSections,
 } from "../helpers.js";
 
 describe("resolvePath", () => {
@@ -367,5 +371,176 @@ describe("matchesTagPattern", () => {
     assert.equal(matchesTagPattern("pkm/tools/mcp", "pkm/*"), true);
     assert.equal(matchesTagPattern("pkm", "pkm/*"), true);
     assert.equal(matchesTagPattern("pkm-other", "pkm/*"), false);
+  });
+});
+
+describe("parseHeadingLevel", () => {
+  it("parses h1 through h6", () => {
+    assert.equal(parseHeadingLevel("# Title"), 1);
+    assert.equal(parseHeadingLevel("## Section"), 2);
+    assert.equal(parseHeadingLevel("### Sub"), 3);
+    assert.equal(parseHeadingLevel("#### Deep"), 4);
+    assert.equal(parseHeadingLevel("##### Deeper"), 5);
+    assert.equal(parseHeadingLevel("###### Deepest"), 6);
+  });
+
+  it("returns 0 for non-headings", () => {
+    assert.equal(parseHeadingLevel("not a heading"), 0);
+    assert.equal(parseHeadingLevel(""), 0);
+    assert.equal(parseHeadingLevel("#no-space"), 0);
+    assert.equal(parseHeadingLevel("####### seven hashes"), 0);
+  });
+});
+
+describe("findSectionRange", () => {
+  const doc = `---
+type: note
+---
+# Title
+
+Intro text.
+
+## Section One
+
+Content one.
+
+## Section Two
+
+Content two.
+
+### Nested
+
+Nested content.
+`;
+
+  it("finds a section with correct boundaries", () => {
+    const range = findSectionRange(doc, "## Section One");
+    assert.ok(range);
+    const section = doc.slice(range.afterHeading, range.sectionEnd);
+    assert.ok(section.includes("Content one."));
+    assert.ok(!section.includes("Content two."));
+  });
+
+  it("handles nested headings within a section", () => {
+    const range = findSectionRange(doc, "## Section Two");
+    assert.ok(range);
+    const section = doc.slice(range.afterHeading, range.sectionEnd);
+    assert.ok(section.includes("Content two."));
+    assert.ok(section.includes("### Nested"));
+    assert.ok(section.includes("Nested content."));
+  });
+
+  it("returns null for heading not found", () => {
+    assert.equal(findSectionRange(doc, "## Nonexistent"), null);
+  });
+
+  it("section extends to EOF when it is the last section at its level", () => {
+    const range = findSectionRange(doc, "## Section Two");
+    assert.ok(range);
+    assert.equal(range.sectionEnd, doc.length);
+  });
+
+  it("includes heading line in headingStart..afterHeading span", () => {
+    const range = findSectionRange(doc, "## Section One");
+    assert.ok(range);
+    const headingLine = doc.slice(range.headingStart, range.afterHeading);
+    assert.ok(headingLine.startsWith("## Section One"));
+  });
+});
+
+describe("listHeadings", () => {
+  it("lists all headings excluding frontmatter", () => {
+    const content = `---
+type: note
+---
+# Title
+
+## Section One
+
+### Sub
+
+## Section Two
+`;
+    const headings = listHeadings(content);
+    assert.deepEqual(headings, ["# Title", "## Section One", "### Sub", "## Section Two"]);
+  });
+
+  it("returns empty array for no headings", () => {
+    const content = "Just plain text\nwith no headings.\n";
+    assert.deepEqual(listHeadings(content), []);
+  });
+
+  it("excludes headings inside frontmatter", () => {
+    const content = `---
+# Not a heading
+type: note
+---
+## Real Heading
+`;
+    const headings = listHeadings(content);
+    assert.deepEqual(headings, ["## Real Heading"]);
+  });
+});
+
+describe("extractTailSections", () => {
+  const doc = `---
+type: devlog
+created: 2026-01-01
+tags:
+  - dev
+---
+# Devlog
+
+## 2026-01-01
+
+Entry one.
+
+## 2026-01-15
+
+Entry two.
+
+## 2026-02-01
+
+Entry three.
+`;
+
+  it("extracts last N sections at given level", () => {
+    const result = extractTailSections(doc, 2, 2);
+    assert.ok(result.includes("## 2026-01-15"));
+    assert.ok(result.includes("## 2026-02-01"));
+    assert.ok(!result.includes("## 2026-01-01"));
+  });
+
+  it("preserves frontmatter", () => {
+    const result = extractTailSections(doc, 1, 2);
+    assert.ok(result.startsWith("---"));
+    assert.ok(result.includes("type: devlog"));
+    assert.ok(result.includes("## 2026-02-01"));
+  });
+
+  it("returns full content when N exceeds available sections", () => {
+    const result = extractTailSections(doc, 100, 2);
+    assert.ok(result.includes("## 2026-01-01"));
+    assert.ok(result.includes("## 2026-01-15"));
+    assert.ok(result.includes("## 2026-02-01"));
+  });
+
+  it("uses custom heading level", () => {
+    const result = extractTailSections(doc, 1, 1);
+    // Only one # heading, so it should include everything under it
+    assert.ok(result.includes("# Devlog"));
+  });
+
+  it("returns full content when no headings match level", () => {
+    const result = extractTailSections(doc, 2, 4);
+    assert.ok(result.includes("## 2026-01-01"));
+    assert.ok(result.includes("## 2026-02-01"));
+  });
+
+  it("handles content without frontmatter", () => {
+    const noFm = "## A\n\nContent A.\n\n## B\n\nContent B.\n";
+    const result = extractTailSections(noFm, 1, 2);
+    assert.ok(result.includes("## B"));
+    assert.ok(!result.includes("## A"));
   });
 });

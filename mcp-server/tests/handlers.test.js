@@ -51,6 +51,31 @@ before(async () => {
   const notesDir = path.join(tmpDir, "notes");
   await fs.mkdir(notesDir, { recursive: true });
 
+  await fs.writeFile(path.join(notesDir, "devlog.md"), `---
+type: devlog
+created: 2026-01-01
+tags:
+  - dev
+---
+# Project Devlog
+
+## 2026-01-01
+
+First entry.
+
+## 2026-01-15
+
+Second entry.
+
+### Sub-detail
+
+Some detail.
+
+## 2026-02-01
+
+Third entry.
+`);
+
   await fs.writeFile(path.join(notesDir, "alpha.md"), `---
 type: research
 status: active
@@ -130,6 +155,83 @@ describe("handleRead", () => {
   it("throws on directory traversal", async () => {
     const handler = handlers.get("vault_read");
     await assert.rejects(() => handler({ path: "../etc/passwd" }), /escapes vault/);
+  });
+
+  it("returns full content when no pagination params given (regression)", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/devlog.md" });
+    const text = result.content[0].text;
+    assert.ok(text.includes("# Project Devlog"));
+    assert.ok(text.includes("## 2026-01-01"));
+    assert.ok(text.includes("## 2026-02-01"));
+  });
+
+  it("reads a specific section with heading param", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/devlog.md", heading: "## 2026-01-15" });
+    const text = result.content[0].text;
+    assert.ok(text.includes("## 2026-01-15"));
+    assert.ok(text.includes("Second entry."));
+    assert.ok(text.includes("### Sub-detail"));
+    assert.ok(!text.includes("First entry."));
+    assert.ok(!text.includes("Third entry."));
+  });
+
+  it("returns error with available headings when heading not found", async () => {
+    const handler = handlers.get("vault_read");
+    await assert.rejects(
+      () => handler({ path: "notes/devlog.md", heading: "## Nonexistent" }),
+      (err) => {
+        assert.ok(err.message.includes("Heading not found"));
+        assert.ok(err.message.includes("## 2026-01-01"));
+        assert.ok(err.message.includes("## 2026-02-01"));
+        return true;
+      }
+    );
+  });
+
+  it("returns last N lines with tail param, with frontmatter prepended", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/devlog.md", tail: 3 });
+    const text = result.content[0].text;
+    assert.ok(text.startsWith("---"), "Should start with frontmatter");
+    assert.ok(text.includes("type: devlog"));
+    assert.ok(text.includes("Third entry."));
+    assert.ok(!text.includes("First entry."));
+  });
+
+  it("returns last N sections with tail_sections param", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/devlog.md", tail_sections: 2 });
+    const text = result.content[0].text;
+    assert.ok(text.startsWith("---"), "Should start with frontmatter");
+    assert.ok(text.includes("## 2026-01-15"));
+    assert.ok(text.includes("## 2026-02-01"));
+    assert.ok(!text.includes("## 2026-01-01"));
+  });
+
+  it("tail_sections respects custom section_level", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/devlog.md", tail_sections: 1, section_level: 1 });
+    const text = result.content[0].text;
+    assert.ok(text.includes("# Project Devlog"));
+    assert.ok(text.includes("## 2026-01-01"));
+  });
+
+  it("rejects heading + tail (mutual exclusivity)", async () => {
+    const handler = handlers.get("vault_read");
+    await assert.rejects(
+      () => handler({ path: "notes/devlog.md", heading: "## 2026-01-01", tail: 5 }),
+      /Only one of/
+    );
+  });
+
+  it("rejects tail + tail_sections (mutual exclusivity)", async () => {
+    const handler = handlers.get("vault_read");
+    await assert.rejects(
+      () => handler({ path: "notes/devlog.md", tail: 5, tail_sections: 2 }),
+      /Only one of/
+    );
   });
 });
 

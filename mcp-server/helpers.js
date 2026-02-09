@@ -341,6 +341,110 @@ export function extractInlineTags(content) {
 }
 
 /**
+ * Extract the heading level (1-6) from a markdown heading line, or 0 if not a heading.
+ *
+ * @param {string} line - a single line of text
+ * @returns {number} heading level 1-6, or 0
+ */
+export function parseHeadingLevel(line) {
+  const match = line.match(/^(#{1,6})\s/);
+  return match ? match[1].length : 0;
+}
+
+/**
+ * Find the byte-index range of a section under a given heading.
+ *
+ * @param {string} content - full file content
+ * @param {string} heading - exact heading line to find (e.g. "## Section One")
+ * @returns {{ headingStart: number, afterHeading: number, sectionEnd: number } | null}
+ */
+export function findSectionRange(content, heading) {
+  const headingStart = content.indexOf(heading);
+  if (headingStart === -1) return null;
+
+  const headingLineEnd = content.indexOf("\n", headingStart);
+  const afterHeading = headingLineEnd === -1 ? content.length : headingLineEnd + 1;
+
+  const level = parseHeadingLevel(heading);
+  let sectionEnd = content.length;
+
+  if (level > 0) {
+    const lines = content.slice(afterHeading).split("\n");
+    let offset = afterHeading;
+    for (const line of lines) {
+      const lineLevel = parseHeadingLevel(line);
+      if (lineLevel > 0 && lineLevel <= level) {
+        sectionEnd = offset;
+        break;
+      }
+      offset += line.length + 1;
+    }
+  }
+
+  return { headingStart, afterHeading, sectionEnd };
+}
+
+/**
+ * Return all heading lines from markdown content, excluding those inside frontmatter.
+ *
+ * @param {string} content - full markdown content
+ * @returns {string[]} heading lines
+ */
+export function listHeadings(content) {
+  let body = content;
+  if (content.startsWith("---")) {
+    const endIndex = content.indexOf("\n---", 3);
+    if (endIndex !== -1) {
+      body = content.slice(endIndex + 4);
+    }
+  }
+
+  return body.split("\n").filter(line => /^#{1,6}\s/.test(line));
+}
+
+/**
+ * Extract frontmatter + last N sections at a given heading level.
+ *
+ * @param {string} content - full file content
+ * @param {number} n - number of sections to return
+ * @param {number} level - heading level (1-6)
+ * @returns {string} frontmatter + last N sections
+ */
+export function extractTailSections(content, n, level) {
+  // Extract frontmatter
+  let frontmatter = "";
+  let body = content;
+  if (content.startsWith("---")) {
+    const endIndex = content.indexOf("\n---", 3);
+    if (endIndex !== -1) {
+      frontmatter = content.slice(0, endIndex + 4);
+      body = content.slice(endIndex + 4);
+    }
+  }
+
+  // Find all headings at exactly the given level
+  const lines = body.split("\n");
+  const headingPositions = [];
+  let offset = 0;
+  for (const line of lines) {
+    if (parseHeadingLevel(line) === level) {
+      headingPositions.push(offset);
+    }
+    offset += line.length + 1;
+  }
+
+  if (headingPositions.length === 0) {
+    return content;
+  }
+
+  const startIdx = Math.max(0, headingPositions.length - n);
+  const sliceStart = headingPositions[startIdx];
+  const tail = body.slice(sliceStart);
+
+  return frontmatter + (frontmatter && !frontmatter.endsWith("\n") ? "\n" : "") + tail;
+}
+
+/**
  * Match a tag against a glob-like pattern.
  * Supports: hierarchical prefix ("pkm/*"), substring ("*mcp*"), prefix ("dev*"), suffix ("*fix"), exact.
  *

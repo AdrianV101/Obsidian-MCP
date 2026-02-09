@@ -45,11 +45,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   const tools = [
     {
       name: "vault_read",
-      description: "Read the contents of a markdown file from the vault",
+      description: "Read the contents of a markdown file from the vault. Supports pagination: read a single section by heading, last N lines, or last N heading-level sections.",
       inputSchema: {
         type: "object",
         properties: {
-          path: { type: "string", description: "Path relative to vault root (e.g., '01-Projects/MyApp/_index.md')" }
+          path: { type: "string", description: "Path relative to vault root (e.g., '01-Projects/MyApp/_index.md')" },
+          heading: { type: "string", description: "Read only the section under this heading (exact match, case-sensitive). Returns heading line + content until next same-or-higher-level heading." },
+          tail: { type: "number", description: "Return the last N lines of the file. Frontmatter is always prepended." },
+          tail_sections: { type: "number", description: "Return the last N sections at the specified heading level. Frontmatter is always prepended." },
+          section_level: { type: "number", description: "Heading level for tail_sections (1=`#`, 2=`##`, etc). Default: 2.", default: 2 }
         },
         required: ["path"]
       }

@@ -9,6 +9,9 @@ import {
   validateFrontmatterStrict,
   extractInlineTags,
   matchesTagPattern,
+  findSectionRange,
+  listHeadings,
+  extractTailSections,
 } from "./helpers.js";
 import { exploreNeighborhood, formatNeighborhood } from "./graph.js";
 import { getAllMarkdownFiles, extractFrontmatter } from "./utils.js";
@@ -29,7 +32,45 @@ export function createHandlers({ vaultPath, templateRegistry, semanticIndex, act
   async function handleRead(args) {
     const filePath = resolvePath(args.path);
     const content = await fs.readFile(filePath, "utf-8");
-    return { content: [{ type: "text", text: content }] };
+
+    // Validate mutual exclusivity
+    const modes = [args.heading, args.tail, args.tail_sections].filter(Boolean);
+    if (modes.length > 1) {
+      throw new Error("Only one of 'heading', 'tail', or 'tail_sections' can be specified at a time");
+    }
+
+    let text = content;
+
+    if (args.heading) {
+      const range = findSectionRange(content, args.heading);
+      if (!range) {
+        const available = listHeadings(content);
+        const list = available.length > 0
+          ? `Available headings:\n${available.join("\n")}`
+          : "No headings found in file";
+        throw new Error(`Heading not found: ${args.heading}\n${list}`);
+      }
+      text = content.slice(range.headingStart, range.sectionEnd);
+    } else if (args.tail) {
+      // Extract frontmatter and prepend it
+      let frontmatter = "";
+      let body = content;
+      if (content.startsWith("---")) {
+        const endIndex = content.indexOf("\n---", 3);
+        if (endIndex !== -1) {
+          frontmatter = content.slice(0, endIndex + 4);
+          body = content.slice(endIndex + 4);
+        }
+      }
+      const lines = body.split("\n");
+      const tailLines = lines.slice(-args.tail);
+      text = frontmatter + (frontmatter && !frontmatter.endsWith("\n") ? "\n" : "") + tailLines.join("\n");
+    } else if (args.tail_sections) {
+      const level = args.section_level || 2;
+      text = extractTailSections(content, args.tail_sections, level);
+    }
+
+    return { content: [{ type: "text", text }] };
   }
 
   async function handleWrite(args) {
@@ -96,46 +137,28 @@ export function createHandlers({ vaultPath, templateRegistry, semanticIndex, act
       if (!args.heading) {
         throw new Error("'heading' is required when 'position' is specified");
       }
-      if (!existing.includes(args.heading)) {
+      const range = findSectionRange(existing, args.heading);
+      if (!range) {
         throw new Error(`Heading not found in ${args.path}: ${args.heading}`);
       }
 
-      const headingIndex = existing.indexOf(args.heading);
-      const headingLineEnd = existing.indexOf("\n", headingIndex);
-      const afterHeading = headingLineEnd === -1 ? existing.length : headingLineEnd + 1;
-
       if (args.position === "before_heading") {
-        newContent = existing.slice(0, headingIndex) + args.content + "\n" + existing.slice(headingIndex);
+        newContent = existing.slice(0, range.headingStart) + args.content + "\n" + existing.slice(range.headingStart);
       } else if (args.position === "after_heading") {
-        newContent = existing.slice(0, afterHeading) + args.content + "\n" + existing.slice(afterHeading);
+        newContent = existing.slice(0, range.afterHeading) + args.content + "\n" + existing.slice(range.afterHeading);
       } else if (args.position === "end_of_section") {
-        const headingMatch = args.heading.match(/^(#{1,6})\s/);
-        const headingLevel = headingMatch ? headingMatch[1].length : 0;
-        let sectionEnd = existing.length;
-
-        if (headingLevel > 0) {
-          const lines = existing.slice(afterHeading).split("\n");
-          let offset = afterHeading;
-          for (const line of lines) {
-            const lineMatch = line.match(/^(#{1,6})\s/);
-            if (lineMatch && lineMatch[1].length <= headingLevel) {
-              sectionEnd = offset;
-              break;
-            }
-            offset += line.length + 1;
-          }
-        }
-
-        const before = existing.slice(0, sectionEnd);
-        const after = existing.slice(sectionEnd);
+        const before = existing.slice(0, range.sectionEnd);
+        const after = existing.slice(range.sectionEnd);
         const separator = before.length > 0 && !before.endsWith("\n") ? "\n" : "";
         newContent = before + separator + args.content + "\n" + after;
       }
-    } else if (args.heading && existing.includes(args.heading)) {
-      const headingIndex = existing.indexOf(args.heading);
-      const headingLineEnd = existing.indexOf("\n", headingIndex);
-      const afterHeading = headingLineEnd === -1 ? existing.length : headingLineEnd + 1;
-      newContent = existing.slice(0, afterHeading) + args.content + "\n" + existing.slice(afterHeading);
+    } else if (args.heading) {
+      const range = findSectionRange(existing, args.heading);
+      if (range) {
+        newContent = existing.slice(0, range.afterHeading) + args.content + "\n" + existing.slice(range.afterHeading);
+      } else {
+        newContent = existing + "\n" + args.content;
+      }
     } else {
       newContent = existing + "\n" + args.content;
     }
