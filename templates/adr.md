@@ -1,6 +1,6 @@
 ---
 type: adr
-status: accepted
+status: proposed
 created: <% tp.date.now("YYYY-MM-DD") %>
 deciders: 
 tags:

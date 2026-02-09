@@ -17,13 +17,19 @@ VAULT_PATH="/path/to/your/vault" node mcp-server/index.js
 
 # Start the server (from mcp-server directory)
 npm start
+
+# Run unit tests
+npm test
+
+# Run linter
+npm run lint
 ```
 
 ## Architecture
 
 The project consists of three parts:
 
-**MCP Server** (`mcp-server/index.js`): A Node.js ES module server implementing the Model Context Protocol. It provides 14 tools for vault interaction:
+**MCP Server** (`mcp-server/`): A Node.js ES module server implementing the Model Context Protocol. The main entry point is `index.js` (tool definitions and request routing), with pure helper functions extracted to `helpers.js`. It provides 14 tools for vault interaction:
 - `vault_read` - Read note contents
 - `vault_write` - Create new notes from templates (enforces frontmatter)
 - `vault_append` - Add content to existing files, with optional positional insert (after/before heading, end of section)

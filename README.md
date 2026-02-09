@@ -5,6 +5,17 @@
 
 An MCP (Model Context Protocol) server that gives Claude Code full read/write access to your Obsidian vault. 14 tools for note CRUD, full-text search, semantic search, graph traversal, metadata queries, and session activity tracking.
 
+## Why
+
+Claude Code is powerful for writing code, but it forgets everything between sessions. This server turns your Obsidian vault into persistent, structured memory that Claude can read and write natively.
+
+- **Session continuity** - Claude logs what it did and can pick up where it left off
+- **Structured knowledge** - ADRs, research notes, devlogs created from enforced templates, not freeform text dumps
+- **Semantic recall** - "find my notes about caching strategies" works even if you never used the word "caching"
+- **Graph context** - Claude can explore related notes by following wikilinks, not just keyword matches
+
+Without this, every Claude Code session starts from scratch. With it, your AI assistant has a working memory that compounds over time.
+
 ## Features
 
 | Tool | Description |
@@ -106,13 +117,28 @@ Included templates: `project-index`, `adr`, `devlog`, `permanent-note`, `researc
 
 ## Architecture
 
+```mermaid
+graph LR
+    CC[Claude Code] -->|MCP protocol| IDX[index.js]
+    IDX --> H[helpers.js]
+    IDX --> G[graph.js]
+    IDX --> E[embeddings.js]
+    IDX --> A[activity.js]
+    IDX --> U[utils.js]
+    IDX -->|read/write| V[(Obsidian Vault)]
+    E -->|embeddings API| OAI[OpenAI]
+    E -->|vector store| DB[(SQLite + sqlite-vec)]
+    A -->|activity log| DB2[(SQLite)]
+```
+
 ```
 mcp-server/
-├── index.js          # MCP server, tool definitions, request handling
+├── index.js          # MCP server, tool definitions, request routing
+├── helpers.js        # Pure functions (path security, filtering, templates)
+├── graph.js          # Wikilink resolution and BFS graph traversal
 ├── embeddings.js     # Semantic index (OpenAI embeddings, SQLite + sqlite-vec)
-├── graph.js          # Graph traversal (wikilink resolution, BFS neighborhood)
 ├── activity.js       # Activity log (session tracking, SQLite)
-├── utils.js          # Shared utilities
+├── utils.js          # Shared utilities (frontmatter parsing, file listing)
 └── package.json
 ```
 

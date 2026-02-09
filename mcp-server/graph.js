@@ -143,7 +143,7 @@ export async function exploreNeighborhood({
 }) {
   // Verify start file exists
   const startFullPath = path.resolve(vaultPath, startPath);
-  if (!startFullPath.startsWith(vaultPath)) {
+  if (startFullPath !== vaultPath && !startFullPath.startsWith(vaultPath + path.sep)) {
     throw new Error("Path escapes vault directory");
   }
   await fs.access(startFullPath); // throws if missing

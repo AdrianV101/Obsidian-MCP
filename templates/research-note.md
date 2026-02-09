@@ -1,7 +1,7 @@
 ---
 type: research
 created: <% tp.date.now("YYYY-MM-DD") %>
-status: in-progress
+status: active
 tags:
   - research
 ---

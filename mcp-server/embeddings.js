@@ -13,7 +13,18 @@ const BATCH_SIZE = 100; // max texts per OpenAI API call
 const REINDEX_BATCH_SIZE = 10; // files per batch during startup sync
 const DEBOUNCE_MS = 2000;
 
+/**
+ * Semantic similarity search over vault notes using OpenAI embeddings.
+ * Stores embeddings in SQLite + sqlite-vec for fast KNN lookups.
+ * Automatically indexes on startup and watches for file changes.
+ */
 export class SemanticIndex {
+  /**
+   * @param {Object} opts
+   * @param {string} opts.vaultPath - absolute path to vault root
+   * @param {string} opts.openaiApiKey - OpenAI API key for embeddings
+   * @param {string} [opts.dbPath] - override path for the SQLite database
+   */
   constructor({ vaultPath, openaiApiKey, dbPath }) {
     this.vaultPath = vaultPath;
     this.openaiApiKey = openaiApiKey;
@@ -88,6 +99,15 @@ export class SemanticIndex {
     }
   }
 
+  /**
+   * Search for semantically similar notes and return formatted results.
+   * @param {Object} opts
+   * @param {string} opts.query - natural language search query
+   * @param {number} [opts.limit=5] - max results
+   * @param {string} [opts.folder] - restrict to folder prefix
+   * @param {number} [opts.threshold] - minimum similarity score (0-1)
+   * @returns {Promise<string>} formatted results text
+   */
   async search({ query, limit = 5, folder, threshold }) {
     if (!this.isAvailable) {
       throw new Error("Semantic index not available");
@@ -162,6 +182,16 @@ export class SemanticIndex {
     return `Found ${results.length} semantically related note${results.length === 1 ? "" : "s"}:\n\n${formatted}${syncNote}`;
   }
 
+  /**
+   * Search for semantically similar notes and return raw result objects.
+   * @param {Object} opts
+   * @param {string} opts.query - natural language search query
+   * @param {number} [opts.limit=5] - max results
+   * @param {string} [opts.folder] - restrict to folder prefix
+   * @param {number} [opts.threshold] - minimum similarity score (0-1)
+   * @param {Set<string>} [opts.excludeFiles] - file paths to exclude
+   * @returns {Promise<Array<{path: string, score: number, preview: string}>>}
+   */
   async searchRaw({ query, limit = 5, folder, threshold, excludeFiles }) {
     if (!this.isAvailable) {
       throw new Error("Semantic index not available");
@@ -216,6 +246,10 @@ export class SemanticIndex {
     return results;
   }
 
+  /**
+   * (Re-)index a single file: chunk it, embed it, store in SQLite.
+   * @param {string} relativePath - vault-relative file path
+   */
   async reindexFile(relativePath) {
     if (!this.db) return;
 
@@ -307,6 +341,10 @@ export class SemanticIndex {
     txn();
   }
 
+  /**
+   * Remove all chunks and metadata for a file from the index.
+   * @param {string} relativePath - vault-relative file path
+   */
   removeFile(relativePath) {
     if (!this.db) return;
 

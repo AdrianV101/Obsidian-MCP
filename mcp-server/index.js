@@ -8,15 +8,33 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import fs from "fs/promises";
 import path from "path";
-import yaml from "js-yaml";
 import crypto from "crypto";
+import { createRequire } from "module";
 import { SemanticIndex } from "./embeddings.js";
 import { exploreNeighborhood, formatNeighborhood } from "./graph.js";
 import { ActivityLog } from "./activity.js";
 import { getAllMarkdownFiles, extractFrontmatter } from "./utils.js";
+import {
+  resolvePath as resolvePathBase,
+  matchesFilters,
+  formatMetadata,
+  countOccurrences,
+  loadTemplates,
+  substituteTemplateVariables,
+  validateFrontmatterStrict,
+  extractInlineTags,
+  matchesTagPattern,
+} from "./helpers.js";
+
+// Read version from package.json
+const require = createRequire(import.meta.url);
+const { version: PKG_VERSION } = require("./package.json");
 
 // Get vault path from environment
 const VAULT_PATH = process.env.VAULT_PATH || process.env.HOME + "/Documents/PKM";
+
+// Bind resolvePath to the vault
+const resolvePath = (relativePath) => resolvePathBase(relativePath, VAULT_PATH);
 
 // Template registry (populated at startup)
 let templateRegistry = new Map();
@@ -29,354 +47,9 @@ let semanticIndex = null;
 let activityLog = null;
 const SESSION_ID = crypto.randomUUID();
 
-// Helper: resolve path relative to vault
-function resolvePath(relativePath) {
-  const resolved = path.resolve(VAULT_PATH, relativePath);
-  // Security: ensure path is within vault
-  if (!resolved.startsWith(VAULT_PATH)) {
-    throw new Error("Path escapes vault directory");
-  }
-  return resolved;
-}
-
-// Helper: check if metadata matches query filters
-function matchesFilters(metadata, filters) {
-  if (!metadata) return false;
-
-  // Type filter (exact match)
-  if (filters.type && metadata.type !== filters.type) {
-    return false;
-  }
-
-  // Status filter (exact match)
-  if (filters.status && metadata.status !== filters.status) {
-    return false;
-  }
-
-  // Tags filter (ALL must be present)
-  if (filters.tags && filters.tags.length > 0) {
-    const noteTags = (metadata.tags || []).filter(Boolean).map(t => String(t).toLowerCase());
-    const allPresent = filters.tags.every(tag =>
-      noteTags.includes(tag.toLowerCase())
-    );
-    if (!allPresent) return false;
-  }
-
-  // Tags_any filter (ANY must be present)
-  if (filters.tags_any && filters.tags_any.length > 0) {
-    const noteTags = (metadata.tags || []).filter(Boolean).map(t => String(t).toLowerCase());
-    const anyPresent = filters.tags_any.some(tag =>
-      noteTags.includes(tag.toLowerCase())
-    );
-    if (!anyPresent) return false;
-  }
-
-  // Date filters (string comparison works for YYYY-MM-DD)
-  const createdStr = metadata.created instanceof Date
-    ? metadata.created.toISOString().split("T")[0]
-    : String(metadata.created || "");
-
-  if (filters.created_after && createdStr < filters.created_after) {
-    return false;
-  }
-  if (filters.created_before && createdStr > filters.created_before) {
-    return false;
-  }
-
-  return true;
-}
-
-// Helper: format metadata for display
-function formatMetadata(metadata) {
-  const parts = [];
-  if (metadata.type) parts.push(`type: ${metadata.type}`);
-  if (metadata.status) parts.push(`status: ${metadata.status}`);
-  if (metadata.created) {
-    const dateStr = metadata.created instanceof Date
-      ? metadata.created.toISOString().split("T")[0]
-      : metadata.created;
-    parts.push(`created: ${dateStr}`);
-  }
-  const tagLine = metadata.tags?.length > 0
-    ? `tags: ${metadata.tags.join(", ")}`
-    : "";
-  return { summary: parts.join(" | "), tagLine };
-}
-
-// Helper: count non-overlapping occurrences of a substring
-function countOccurrences(content, searchString) {
-  if (searchString.length === 0) return 0;
-  let count = 0;
-  let position = 0;
-  while ((position = content.indexOf(searchString, position)) !== -1) {
-    count++;
-    position += searchString.length;
-  }
-  return count;
-}
-
-// Helper: extract template variables from content
-function extractTemplateVariables(content) {
-  const variables = new Set();
-  const regex = /<%\s*tp\.([a-zA-Z_.()"\-]+)\s*%>/g;
-  let match;
-  while ((match = regex.exec(content)) !== null) {
-    variables.add(match[1]);
-  }
-  return Array.from(variables);
-}
-
-// Helper: extract description from template
-function extractTemplateDescription(content, frontmatter) {
-  if (frontmatter?.description) return frontmatter.description;
-
-  const lines = content.split("\n");
-  let inFrontmatter = false;
-  for (const line of lines) {
-    if (line.trim() === "---") {
-      inFrontmatter = !inFrontmatter;
-      continue;
-    }
-    if (inFrontmatter) continue;
-
-    const trimmed = line.trim();
-    if (trimmed.startsWith("#")) {
-      return trimmed.replace(/^#+\s*/, "").replace(/<%[^%]+%>/g, "{title}").slice(0, 80);
-    }
-    if (trimmed && !trimmed.startsWith("<!--")) {
-      return trimmed.slice(0, 80);
-    }
-  }
-  return `Template for ${frontmatter?.type || "notes"}`;
-}
-
-// Helper: load templates from 05-Templates/
-async function loadTemplates() {
-  const templatesDir = resolvePath("05-Templates");
-  const templateMap = new Map();
-
-  try {
-    const files = await fs.readdir(templatesDir);
-    for (const file of files) {
-      if (!file.endsWith(".md")) continue;
-
-      const shortName = path.basename(file, ".md");
-      const content = await fs.readFile(path.join(templatesDir, file), "utf-8");
-      const frontmatter = extractFrontmatter(content);
-      const variables = extractTemplateVariables(content);
-
-      templateMap.set(shortName, {
-        shortName,
-        path: `05-Templates/${file}`,
-        description: extractTemplateDescription(content, frontmatter),
-        variables,
-        frontmatter,
-        content
-      });
-    }
-  } catch (e) {
-    if (e.code === "ENOENT") {
-      console.error("Warning: 05-Templates/ not found in vault");
-    } else {
-      console.error(`Error loading templates: ${e.message}`);
-    }
-  }
-
-  return templateMap;
-}
-
-// Helper: substitute template variables and frontmatter fields
-function substituteTemplateVariables(content, vars) {
-  const now = new Date();
-  const dateFormats = {
-    "YYYY-MM-DD": now.toISOString().split("T")[0],
-    "YYYY-MM-DD HH:mm": now.toISOString().replace("T", " ").slice(0, 16),
-    "YYYY": now.getFullYear().toString(),
-    "MM": String(now.getMonth() + 1).padStart(2, "0"),
-    "DD": String(now.getDate()).padStart(2, "0")
-  };
-
-  let result = content;
-
-  // Replace tp.date.now("FORMAT") patterns
-  result = result.replace(/<%\s*tp\.date\.now\("([^"]+)"\)\s*%>/g, (match, format) => {
-    return dateFormats[format] || now.toISOString().split("T")[0];
-  });
-
-  // Replace tp.file.title
-  result = result.replace(/<%\s*tp\.file\.title\s*%>/g, vars.title || "Untitled");
-
-  // Replace custom variables in body (<%...%> patterns)
-  if (vars.custom) {
-    for (const [key, value] of Object.entries(vars.custom)) {
-      const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(`<%\\s*${escaped}\\s*%>`, "g");
-      result = result.replace(regex, value);
-    }
-  }
-
-  // Handle frontmatter field substitutions
-  if (vars.frontmatter && content.startsWith("---")) {
-    const endIndex = result.indexOf("---", 3);
-    if (endIndex !== -1) {
-      const frontmatterSection = result.slice(0, endIndex + 3);
-      const body = result.slice(endIndex + 3);
-
-      let updatedFrontmatter = frontmatterSection;
-
-      // Handle tags array
-      if (vars.frontmatter.tags && Array.isArray(vars.frontmatter.tags)) {
-        const tagsYaml = vars.frontmatter.tags.map(t => `  - ${t}`).join("\n");
-        let tagsReplaced = false;
-
-        // Try inline format first: tags: [tag1, tag2]
-        if (updatedFrontmatter.match(/^tags:\s*\[.*\]/m)) {
-          updatedFrontmatter = updatedFrontmatter.replace(
-            /^tags:\s*\[.*\]/m,
-            `tags:\n${tagsYaml}`
-          );
-          tagsReplaced = true;
-        }
-
-        // Try multi-line format: tags:\n  - tag1\n  - tag2
-        if (!tagsReplaced && updatedFrontmatter.match(/tags:\s*\n(?:\s+-[^\n]*\n?)*/)) {
-          updatedFrontmatter = updatedFrontmatter.replace(
-            /tags:\s*\n(?:\s+-[^\n]*\n?)*/,
-            `tags:\n${tagsYaml}\n`
-          );
-          tagsReplaced = true;
-        }
-
-        // If no tags section existed, add before closing ---
-        if (!tagsReplaced) {
-          updatedFrontmatter = updatedFrontmatter.replace(
-            /\n---$/,
-            `\ntags:\n${tagsYaml}\n---`
-          );
-        }
-      }
-
-      // Handle other simple frontmatter fields (string values)
-      for (const [key, value] of Object.entries(vars.frontmatter)) {
-        if (key === "tags") continue; // Already handled
-        if (typeof value === "string") {
-          const fieldRegex = new RegExp(`^${key}:.*$`, "m");
-          if (updatedFrontmatter.match(fieldRegex)) {
-            updatedFrontmatter = updatedFrontmatter.replace(fieldRegex, `${key}: ${value}`);
-          } else {
-            updatedFrontmatter = updatedFrontmatter.replace(
-              /\n---$/,
-              `\n${key}: ${value}\n---`
-            );
-          }
-        }
-      }
-
-      result = updatedFrontmatter + body;
-    }
-  }
-
-  return result;
-}
-
-// Helper: validate frontmatter after substitution
-function validateFrontmatterStrict(content) {
-  const frontmatter = extractFrontmatter(content);
-  const errors = [];
-
-  if (!frontmatter) {
-    return { valid: false, errors: ["No frontmatter found in template output"], frontmatter: null };
-  }
-
-  if (!frontmatter.type) {
-    errors.push("Missing required field: type");
-  }
-  if (!frontmatter.created) {
-    errors.push("Missing required field: created");
-  }
-  if (!frontmatter.tags || !Array.isArray(frontmatter.tags) || frontmatter.tags.filter(Boolean).length === 0) {
-    errors.push("Missing required field: tags (must be non-empty array)");
-  }
-
-  // Check for unsubstituted template variables
-  const unsubstituted = content.match(/<%[^%]+%>/g);
-  if (unsubstituted) {
-    errors.push(`Unsubstituted template variables: ${unsubstituted.join(", ")}`);
-  }
-
-  return {
-    valid: errors.length === 0,
-    errors,
-    frontmatter
-  };
-}
-
-// Helper: extract inline #tags from markdown body
-function extractInlineTags(content) {
-  let body = content;
-
-  // Strip frontmatter (parsed separately)
-  if (content.startsWith("---")) {
-    const endIndex = content.indexOf("---", 3);
-    if (endIndex !== -1) {
-      body = content.slice(endIndex + 3);
-    }
-  }
-
-  // Remove fenced code blocks
-  body = body.replace(/```[\s\S]*?```/g, "");
-
-  // Remove inline code
-  body = body.replace(/`[^`]+`/g, "");
-
-  // Remove heading markers to avoid # in ## being matched
-  body = body.replace(/^#+\s/gm, "");
-
-  const tags = new Set();
-  const tagRegex = /(?:^|[^a-zA-Z0-9&])#([a-zA-Z_][a-zA-Z0-9_/-]*)/g;
-  let match;
-  while ((match = tagRegex.exec(body)) !== null) {
-    tags.add(match[1].toLowerCase());
-  }
-
-  return Array.from(tags);
-}
-
-// Helper: match tag against glob-like pattern
-function matchesTagPattern(tag, pattern) {
-  if (!pattern) return true;
-
-  const t = tag.toLowerCase();
-  const p = pattern.toLowerCase();
-
-  // Hierarchical prefix: "pkm/*" matches "pkm" and "pkm/system"
-  if (p.endsWith("/*")) {
-    const prefix = p.slice(0, -2);
-    return t === prefix || t.startsWith(prefix + "/");
-  }
-
-  // Substring: "*mcp*"
-  if (p.startsWith("*") && p.endsWith("*") && p.length > 2) {
-    return t.includes(p.slice(1, -1));
-  }
-
-  // Prefix: "dev*"
-  if (p.endsWith("*")) {
-    return t.startsWith(p.slice(0, -1));
-  }
-
-  // Suffix: "*fix"
-  if (p.startsWith("*")) {
-    return t.endsWith(p.slice(1));
-  }
-
-  // Exact match
-  return t === p;
-}
-
 // Create the server
 const server = new Server(
-  { name: "pkm-mcp-server", version: "1.0.0" },
+  { name: "pkm-mcp-server", version: PKG_VERSION },
   { capabilities: { tools: {} } }
 );
 
@@ -655,48 +328,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "vault_write": {
         const { template: templateName, path: outputPath, variables = {}, frontmatter = {}, createDirs = true } = args;
 
-        // 1. Validate template exists
         const templateInfo = templateRegistry.get(templateName);
         if (!templateInfo) {
           const available = Array.from(templateRegistry.keys()).join(", ");
           throw new Error(`Template "${templateName}" not found. Available templates: ${available || "(none)"}`);
         }
 
-        // 2. Check file doesn't already exist
         const filePath = resolvePath(outputPath);
         try {
           await fs.access(filePath);
           throw new Error(`File already exists: ${outputPath}. Use vault_edit or vault_append to modify existing files.`);
         } catch (e) {
           if (e.code !== "ENOENT") throw e;
-          // File doesn't exist - good, proceed
         }
 
-        // 3. Derive title from output path
         const title = path.basename(outputPath, ".md");
-
-        // 4. Substitute variables
         const substituted = substituteTemplateVariables(templateInfo.content, {
           title,
           custom: variables,
           frontmatter
         });
 
-        // 5. Validate frontmatter (strict)
         const validation = validateFrontmatterStrict(substituted);
         if (!validation.valid) {
           throw new Error(`Template validation failed:\n${validation.errors.join("\n")}`);
         }
 
-        // 6. Create directories if needed
         if (createDirs) {
           await fs.mkdir(path.dirname(filePath), { recursive: true });
         }
 
-        // 7. Write file
         await fs.writeFile(filePath, substituted, "utf-8");
 
-        // 8. Return success with frontmatter summary
         const fm = validation.frontmatter;
         const createdStr = fm.created instanceof Date
           ? fm.created.toISOString().split("T")[0]
@@ -711,16 +374,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "vault_append": {
         const filePath = resolvePath(args.path);
-        let existing = "";
+        let existing;
         try {
           existing = await fs.readFile(filePath, "utf-8");
         } catch (e) {
-          // File doesn't exist, will create
+          if (e.code === "ENOENT") {
+            throw new Error(`File not found: ${args.path}. Use vault_write to create new files.`, { cause: e });
+          }
+          throw e;
         }
 
         let newContent;
         if (args.position) {
-          // Positional insert mode — heading is required and must exist
           if (!args.heading) {
             throw new Error("'heading' is required when 'position' is specified");
           }
@@ -737,13 +402,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           } else if (args.position === "after_heading") {
             newContent = existing.slice(0, afterHeading) + args.content + "\n" + existing.slice(afterHeading);
           } else if (args.position === "end_of_section") {
-            // Find section end: next heading at same or higher level
             const headingMatch = args.heading.match(/^(#{1,6})\s/);
             const headingLevel = headingMatch ? headingMatch[1].length : 0;
             let sectionEnd = existing.length;
 
             if (headingLevel > 0) {
-              // Search line-by-line from after the heading
               const lines = existing.slice(afterHeading).split("\n");
               let offset = afterHeading;
               for (const line of lines) {
@@ -752,24 +415,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   sectionEnd = offset;
                   break;
                 }
-                offset += line.length + 1; // +1 for newline
+                offset += line.length + 1;
               }
             }
 
-            // Insert before the section boundary, ensuring a newline separator
             const before = existing.slice(0, sectionEnd);
             const after = existing.slice(sectionEnd);
             const separator = before.length > 0 && !before.endsWith("\n") ? "\n" : "";
             newContent = before + separator + args.content + "\n" + after;
           }
         } else if (args.heading && existing.includes(args.heading)) {
-          // Legacy behavior: insert after heading (no position param)
           const headingIndex = existing.indexOf(args.heading);
           const headingLineEnd = existing.indexOf("\n", headingIndex);
           const afterHeading = headingLineEnd === -1 ? existing.length : headingLineEnd + 1;
           newContent = existing.slice(0, afterHeading) + args.content + "\n" + existing.slice(afterHeading);
         } else {
-          // Append to end
           newContent = existing + "\n" + args.content;
         }
 
@@ -779,11 +439,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "vault_edit": {
         const filePath = resolvePath(args.path);
-
-        // Read existing file (will throw if doesn't exist)
         const content = await fs.readFile(filePath, "utf-8");
-
-        // Count occurrences
         const count = countOccurrences(content, args.old_string);
 
         if (count === 0) {
@@ -800,10 +456,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
 
-        // Exactly one match - safe to replace
         const newContent = content.replace(args.old_string, args.new_string);
         await fs.writeFile(filePath, newContent, "utf-8");
-
         return { content: [{ type: "text", text: `Successfully edited ${args.path}` }] };
       }
 
@@ -819,13 +473,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const filePath = path.join(searchDir, file);
           const content = await fs.readFile(filePath, "utf-8");
           if (content.toLowerCase().includes(query)) {
-            // Find matching lines
             const lines = content.split("\n");
             const matchingLines = lines
               .map((line, i) => ({ line, num: i + 1 }))
               .filter(({ line }) => line.toLowerCase().includes(query))
               .slice(0, 3);
-            
+
             results.push({
               path: file,
               matches: matchingLines.map(m => `L${m.num}: ${m.line.trim().slice(0, 100)}`)
@@ -833,33 +486,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
         }
 
-        return { 
-          content: [{ 
-            type: "text", 
-            text: results.length > 0 
+        return {
+          content: [{
+            type: "text",
+            text: results.length > 0
               ? results.map(r => `**${r.path}**\n${r.matches.join("\n")}`).join("\n\n")
               : "No matches found"
-          }] 
+          }]
         };
       }
 
       case "vault_list": {
         const listPath = resolvePath(args.path || "");
         const entries = await fs.readdir(listPath, { withFileTypes: true });
-        
-        let items = [];
+
+        const items = [];
         for (const entry of entries) {
           if (entry.name.startsWith(".")) continue;
-          
+
           const itemPath = path.join(args.path || "", entry.name);
           if (entry.isDirectory()) {
-            items.push(`📁 ${itemPath}/`);
+            items.push(`[dir] ${itemPath}/`);
             if (args.recursive) {
               const subItems = await getAllMarkdownFiles(path.join(listPath, entry.name));
-              items.push(...subItems.map(f => `   📄 ${path.join(itemPath, f)}`));
+              items.push(...subItems.map(f => `  ${path.join(itemPath, f)}`));
             }
           } else if (!args.pattern || entry.name.match(new RegExp("^" + args.pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$"))) {
-            items.push(`📄 ${itemPath}`);
+            items.push(itemPath);
           }
         }
 
@@ -870,23 +523,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const searchDir = args.folder ? resolvePath(args.folder) : VAULT_PATH;
         const files = await getAllMarkdownFiles(searchDir);
         const limit = args.limit || 10;
-        
+
         const withStats = await Promise.all(
           files.map(async (file) => {
             const stat = await fs.stat(path.join(searchDir, file));
             return { path: file, mtime: stat.mtime };
           })
         );
-        
+
         const sorted = withStats
           .sort((a, b) => b.mtime - a.mtime)
           .slice(0, limit);
 
-        return { 
-          content: [{ 
-            type: "text", 
+        return {
+          content: [{
+            type: "text",
             text: sorted.map(f => `${f.path} (${f.mtime.toISOString().split("T")[0]})`).join("\n")
-          }] 
+          }]
         };
       }
 
@@ -894,10 +547,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const filePath = resolvePath(args.path);
         const content = await fs.readFile(filePath, "utf-8");
         const fileName = path.basename(args.path, ".md");
-        
+
         const result = { outgoing: [], incoming: [] };
-        
-        // Find outgoing links [[...]]
+
         if (args.direction !== "incoming") {
           const linkRegex = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
           let match;
@@ -905,8 +557,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             result.outgoing.push(match[1]);
           }
         }
-        
-        // Find incoming links (search all files for links to this file)
+
         if (args.direction !== "outgoing") {
           const allFiles = await getAllMarkdownFiles(VAULT_PATH);
           for (const file of allFiles) {
@@ -925,7 +576,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (result.incoming.length > 0) {
           output += `**Incoming links:**\n${result.incoming.map(l => `- ${l}`).join("\n")}`;
         }
-        
+
         return { content: [{ type: "text", text: output || "No links found" }] };
       }
 
@@ -1009,10 +660,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const filePath = path.join(searchDir, file);
           const content = await fs.readFile(filePath, "utf-8");
 
-          // Collect tags from this file (deduplicated per-file)
           const fileTags = new Set();
 
-          // Frontmatter tags (always)
           const metadata = extractFrontmatter(content);
           if (metadata && Array.isArray(metadata.tags)) {
             for (const tag of metadata.tags) {
@@ -1020,14 +669,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             }
           }
 
-          // Inline tags (opt-in)
           if (args.include_inline) {
             for (const tag of extractInlineTags(content)) {
               fileTags.add(tag);
             }
           }
 
-          // Increment counts (once per file per tag)
           if (fileTags.size > 0) {
             notesWithTags++;
             for (const tag of fileTags) {
@@ -1036,13 +683,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
         }
 
-        // Filter by pattern
         let results = Array.from(tagCounts.entries());
         if (args.pattern) {
           results = results.filter(([tag]) => matchesTagPattern(tag, args.pattern));
         }
 
-        // Sort: count desc, then alphabetical
         results.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 
         if (results.length === 0) {
@@ -1128,9 +773,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           throw new Error("Link suggestions not available (OPENAI_API_KEY not set)");
         }
 
-        // Resolve input text
         let inputText = args.content;
-        let sourcePath = args.path;
+        const sourcePath = args.path;
         if (!inputText && !sourcePath) {
           throw new Error("Either 'content' or 'path' must be provided");
         }
@@ -1139,7 +783,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           inputText = await fs.readFile(filePath, "utf-8");
         }
 
-        // Strip frontmatter for embedding
         let body = inputText;
         if (body.startsWith("---")) {
           const endIdx = body.indexOf("---", 3);
@@ -1147,29 +790,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         if (!body) throw new Error("No content to analyze");
 
-        // Parse existing [[wikilinks]] to build exclusion set
         const linkRegex = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
         const linkedNames = new Set();
         let match;
         while ((match = linkRegex.exec(inputText)) !== null) {
-          // Store basename (without path/extension) for matching
           const target = match[1];
           linkedNames.add(path.basename(target, ".md").toLowerCase());
         }
 
-        // Find similar notes via semantic index
         const excludeFiles = new Set();
         if (sourcePath) excludeFiles.add(sourcePath);
 
         const results = await semanticIndex.searchRaw({
-          query: body.slice(0, 8000), // truncate to embedding model limit
-          limit: (args.limit || 5) * 3, // overfetch to compensate for post-filtering
+          query: body.slice(0, 8000),
+          limit: (args.limit || 5) * 3,
           folder: args.folder,
           threshold: args.threshold,
           excludeFiles
         });
 
-        // Filter out already-linked notes
         const suggestions = [];
         for (const r of results) {
           if (suggestions.length >= (args.limit || 5)) break;
@@ -1195,19 +834,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new Error(`Unknown tool: ${name}`);
     }
   } catch (error) {
-    return { 
+    return {
       content: [{ type: "text", text: `Error: ${error.message}` }],
-      isError: true 
+      isError: true
     };
   }
 });
 
 // Initialize and start the server
 async function initializeServer() {
-  // Load templates before connecting
-  templateRegistry = await loadTemplates();
+  templateRegistry = await loadTemplates(VAULT_PATH);
 
-  // Build template descriptions for tool schema
   if (templateRegistry.size > 0) {
     templateDescriptions = Array.from(templateRegistry.values())
       .map(t => `- **${t.shortName}**: ${t.description}`)
@@ -1216,7 +853,6 @@ async function initializeServer() {
     templateDescriptions = "(No templates found - add .md files to 05-Templates/)";
   }
 
-  // Initialize semantic index if API key is available
   const openaiApiKey = process.env.OPENAI_API_KEY;
   if (openaiApiKey) {
     try {
@@ -1231,7 +867,6 @@ async function initializeServer() {
     console.error("OPENAI_API_KEY not set — semantic search disabled");
   }
 
-  // Initialize activity log
   try {
     activityLog = new ActivityLog({ vaultPath: VAULT_PATH, sessionId: SESSION_ID });
     await activityLog.initialize();
@@ -1241,13 +876,11 @@ async function initializeServer() {
     activityLog = null;
   }
 
-  // Connect server
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(`PKM MCP Server running... (${templateRegistry.size} templates loaded${semanticIndex?.isAvailable ? ", semantic search enabled" : ""}, activity log ${activityLog ? "enabled" : "disabled"})`);
 }
 
-// Graceful shutdown: close databases on termination
 function shutdown() {
   console.error("Shutting down...");
   if (semanticIndex) semanticIndex.shutdown();
