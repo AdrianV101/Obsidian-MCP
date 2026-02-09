@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { getAllMarkdownFiles, extractFrontmatter } from "./utils.js";
+import { buildBasenameMap } from "./helpers.js";
 
 const WIKILINK_REGEX = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
 
@@ -15,26 +16,6 @@ export function extractWikilinks(content) {
   return links;
 }
 
-// --- Link Resolution ---
-
-/**
- * Build a lookup map from lowercase basename to all matching file paths.
- * Handles ambiguous links (multiple files with the same basename).
- *
- * @param {string[]} allFiles - vault-relative file paths
- * @returns {Map<string, string[]>}
- */
-export function buildLinkResolutionMap(allFiles) {
-  const map = new Map();
-  for (const filePath of allFiles) {
-    const basename = path.basename(filePath, ".md").toLowerCase();
-    if (!map.has(basename)) {
-      map.set(basename, []);
-    }
-    map.get(basename).push(filePath);
-  }
-  return map;
-}
 
 /**
  * Resolve a wikilink target to actual file paths.
@@ -150,8 +131,7 @@ export async function exploreNeighborhood({
 
   // Build indexes once
   const allFiles = await getAllMarkdownFiles(vaultPath);
-  const allFilesSet = new Set(allFiles);
-  const resolutionMap = buildLinkResolutionMap(allFiles);
+  const { basenameMap: resolutionMap, allFilesSet } = buildBasenameMap(allFiles);
 
   const needIncoming = direction === "both" || direction === "incoming";
   const incomingIndex = needIncoming

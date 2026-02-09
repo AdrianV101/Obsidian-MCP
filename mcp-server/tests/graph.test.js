@@ -2,10 +2,10 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   extractWikilinks,
-  buildLinkResolutionMap,
   resolveLink,
   formatNeighborhood,
 } from "../graph.js";
+import { buildBasenameMap } from "../helpers.js";
 
 describe("extractWikilinks", () => {
   it("extracts simple wikilinks", () => {
@@ -48,10 +48,10 @@ describe("extractWikilinks", () => {
   });
 });
 
-describe("buildLinkResolutionMap", () => {
+describe("buildBasenameMap (used by graph)", () => {
   it("maps basenames to file paths", () => {
     const files = ["01-Projects/note.md", "02-Areas/note.md", "03-Resources/other.md"];
-    const map = buildLinkResolutionMap(files);
+    const map = buildBasenameMap(files).basenameMap;
 
     assert.deepEqual(map.get("note"), ["01-Projects/note.md", "02-Areas/note.md"]);
     assert.deepEqual(map.get("other"), ["03-Resources/other.md"]);
@@ -59,13 +59,13 @@ describe("buildLinkResolutionMap", () => {
 
   it("uses lowercase basenames", () => {
     const files = ["MyNote.md"];
-    const map = buildLinkResolutionMap(files);
+    const map = buildBasenameMap(files).basenameMap;
     assert.ok(map.has("mynote"));
     assert.ok(!map.has("MyNote"));
   });
 
   it("handles empty file list", () => {
-    const map = buildLinkResolutionMap([]);
+    const map = buildBasenameMap([]).basenameMap;
     assert.equal(map.size, 0);
   });
 });
@@ -77,8 +77,7 @@ describe("resolveLink", () => {
     "03-Resources/unique.md",
     "folder/subfolder/deep.md",
   ];
-  const resolutionMap = buildLinkResolutionMap(files);
-  const allFilesSet = new Set(files);
+  const { basenameMap: resolutionMap, allFilesSet } = buildBasenameMap(files);
 
   it("resolves exact path match", () => {
     const result = resolveLink("01-Projects/note-a", resolutionMap, allFilesSet);
