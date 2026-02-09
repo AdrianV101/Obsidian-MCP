@@ -15,6 +15,8 @@ import {
   findSectionRange,
   listHeadings,
   extractTailSections,
+  buildBasenameMap,
+  resolveFuzzyFolder,
 } from "../helpers.js";
 
 describe("resolvePath", () => {
@@ -542,5 +544,78 @@ Entry three.
     const result = extractTailSections(noFm, 1, 2);
     assert.ok(result.includes("## B"));
     assert.ok(!result.includes("## A"));
+  });
+});
+
+describe("buildBasenameMap", () => {
+  it("maps lowercase basenames to full paths", () => {
+    const files = [
+      "01-Projects/MyApp/devlog.md",
+      "01-Projects/Other/devlog.md",
+      "notes/unique-note.md",
+    ];
+    const { basenameMap, allFilesSet } = buildBasenameMap(files);
+
+    assert.deepStrictEqual(basenameMap.get("devlog"), [
+      "01-Projects/MyApp/devlog.md",
+      "01-Projects/Other/devlog.md",
+    ]);
+    assert.deepStrictEqual(basenameMap.get("unique-note"), ["notes/unique-note.md"]);
+    assert.equal(allFilesSet.has("notes/unique-note.md"), true);
+  });
+
+  it("handles empty file list", () => {
+    const { basenameMap, allFilesSet } = buildBasenameMap([]);
+    assert.equal(basenameMap.size, 0);
+    assert.equal(allFilesSet.size, 0);
+  });
+
+  it("is case-insensitive for basenames", () => {
+    const { basenameMap } = buildBasenameMap(["notes/MyNote.md"]);
+    assert.deepStrictEqual(basenameMap.get("mynote"), ["notes/MyNote.md"]);
+  });
+});
+
+describe("resolveFuzzyFolder", () => {
+  const allFiles = [
+    "01-Projects/Obsidian-MCP/development/devlog.md",
+    "01-Projects/Obsidian-MCP/research/note.md",
+    "01-Projects/MyApp/development/devlog.md",
+    "02-Areas/health/log.md",
+  ];
+
+  it("returns exact folder when it matches a known directory", () => {
+    const result = resolveFuzzyFolder("01-Projects/Obsidian-MCP", allFiles);
+    assert.equal(result, "01-Projects/Obsidian-MCP");
+  });
+
+  it("resolves partial folder by substring match", () => {
+    const result = resolveFuzzyFolder("Obsidian-MCP", allFiles);
+    assert.equal(result, "01-Projects/Obsidian-MCP");
+  });
+
+  it("throws on ambiguous folder", () => {
+    assert.throws(
+      () => resolveFuzzyFolder("development", allFiles),
+      (err) => {
+        assert.match(err.message, /matches \d+ folders/);
+        return true;
+      }
+    );
+  });
+
+  it("throws on no match", () => {
+    assert.throws(
+      () => resolveFuzzyFolder("nonexistent", allFiles),
+      (err) => {
+        assert.match(err.message, /not found/i);
+        return true;
+      }
+    );
+  });
+
+  it("is case-insensitive", () => {
+    const result = resolveFuzzyFolder("obsidian-mcp", allFiles);
+    assert.equal(result, "01-Projects/Obsidian-MCP");
   });
 });

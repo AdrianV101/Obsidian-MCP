@@ -477,3 +477,78 @@ export function matchesTagPattern(tag, pattern) {
 
   return t === p;
 }
+
+/**
+ * Build a lookup map from lowercase basename (without .md) to all matching vault-relative paths.
+ * Also returns a Set of all file paths for O(1) exact-match checks.
+ *
+ * @param {string[]} allFiles - vault-relative file paths
+ * @returns {{ basenameMap: Map<string, string[]>, allFilesSet: Set<string> }}
+ */
+export function buildBasenameMap(allFiles) {
+  const basenameMap = new Map();
+  const allFilesSet = new Set(allFiles);
+  for (const filePath of allFiles) {
+    const basename = path.basename(filePath, ".md").toLowerCase();
+    if (!basenameMap.has(basename)) {
+      basenameMap.set(basename, []);
+    }
+    basenameMap.get(basename).push(filePath);
+  }
+  return { basenameMap, allFilesSet };
+}
+
+/**
+ * Resolve a partial folder name to a full vault-relative directory path.
+ *
+ * Resolution order:
+ * 1. Exact match — folder string is a known directory prefix of at least one file
+ * 2. Substring match — case-insensitive substring of known directory paths
+ *
+ * @param {string} folder - user-provided folder (full or partial)
+ * @param {string[]} allFiles - all vault-relative file paths
+ * @returns {string} resolved vault-relative directory path
+ * @throws {Error} if folder not found or ambiguous
+ */
+export function resolveFuzzyFolder(folder, allFiles) {
+  // Collect all unique directory paths from the file list
+  const dirs = new Set();
+  for (const file of allFiles) {
+    let dir = path.dirname(file);
+    while (dir && dir !== ".") {
+      dirs.add(dir);
+      dir = path.dirname(dir);
+    }
+  }
+
+  // 1. Exact match
+  if (dirs.has(folder)) return folder;
+
+  // 2. Substring match (case-insensitive)
+  const lowerFolder = folder.toLowerCase();
+  const matches = Array.from(dirs).filter(d => d.toLowerCase().includes(lowerFolder));
+
+  // Deduplicate: if both "01-Projects/Obsidian-MCP" and
+  // "01-Projects/Obsidian-MCP/development" match, prefer the shortest
+  // that ends with the search term (most likely the intended target).
+  if (matches.length > 1) {
+    const endsWith = matches.filter(d => d.toLowerCase().endsWith(lowerFolder));
+    if (endsWith.length === 1) return endsWith[0];
+    if (endsWith.length > 1) {
+      const list = endsWith.map(p => `  - ${p}`).join("\n");
+      throw new Error(
+        `"${folder}" matches ${endsWith.length} folders:\n${list}\nUse a more specific path.`
+      );
+    }
+  }
+
+  if (matches.length === 1) return matches[0];
+  if (matches.length === 0) {
+    throw new Error(`Folder not found: "${folder}". No matching directory in vault.`);
+  }
+
+  const list = matches.map(p => `  - ${p}`).join("\n");
+  throw new Error(
+    `"${folder}" matches ${matches.length} folders:\n${list}\nUse a more specific path.`
+  );
+}
