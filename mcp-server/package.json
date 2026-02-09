@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node index.js",
     "test": "node --test tests/*.test.js",
-    "lint": "eslint *.js"
+    "lint": "eslint *.js tests/"
   },
   "repository": {
     "type": "git",
@@ -34,7 +34,7 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "better-sqlite3": "^12.6.2",
     "js-yaml": "^4.1.0",
-    "sqlite-vec": "^0.1.7-alpha.2"
+    "sqlite-vec": "0.1.7-alpha.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
