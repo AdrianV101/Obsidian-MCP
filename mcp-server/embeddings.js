@@ -608,7 +608,8 @@ async function callEmbeddingAPI(texts, apiKey, retries = 3) {
       body: JSON.stringify({
         model: EMBEDDING_MODEL,
         input: texts
-      })
+      }),
+      signal: AbortSignal.timeout(30000)
     });
 
     if (response.ok) {

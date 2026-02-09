@@ -14,7 +14,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AdrianV101/PKM_MCP.git"
+    "url": "git+https://github.com/AdrianV101/Obsidian-MCP.git"
   },
   "author": "Adrian Verhoosel",
   "license": "MIT",
@@ -26,9 +26,9 @@
     "claude-code",
     "model-context-protocol"
   ],
-  "homepage": "https://github.com/AdrianV101/PKM_MCP#readme",
+  "homepage": "https://github.com/AdrianV101/Obsidian-MCP#readme",
   "bugs": {
-    "url": "https://github.com/AdrianV101/PKM_MCP/issues"
+    "url": "https://github.com/AdrianV101/Obsidian-MCP/issues"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

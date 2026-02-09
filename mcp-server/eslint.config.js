@@ -15,6 +15,7 @@ export default [
         URL: "readonly",
         Float32Array: "readonly",
         BigInt: "readonly",
+        AbortSignal: "readonly",
         Map: "readonly",
         Set: "readonly",
       },
