@@ -1054,15 +1054,15 @@ describe("updateFrontmatter", () => {
 
 describe("compareFrontmatterValues", () => {
   it("sorts priority with custom ranking (asc: low first)", () => {
-    assert.ok(compareFrontmatterValues("low", "high", "priority") > 0);
-    assert.ok(compareFrontmatterValues("urgent", "low", "priority") < 0);
+    assert.ok(compareFrontmatterValues("low", "high", "priority") < 0);
+    assert.ok(compareFrontmatterValues("urgent", "low", "priority") > 0);
     assert.ok(compareFrontmatterValues("normal", "normal", "priority") === 0);
   });
 
   it("sorts priority desc (urgent first)", () => {
-    assert.ok(compareFrontmatterValues("urgent", "high", "priority") < 0);
-    assert.ok(compareFrontmatterValues("high", "normal", "priority") < 0);
-    assert.ok(compareFrontmatterValues("normal", "low", "priority") < 0);
+    assert.ok(compareFrontmatterValues("urgent", "high", "priority") > 0);
+    assert.ok(compareFrontmatterValues("high", "normal", "priority") > 0);
+    assert.ok(compareFrontmatterValues("normal", "low", "priority") > 0);
   });
 
   it("sorts date-like values chronologically", () => {

@@ -236,6 +236,47 @@ No other file links here.
   const headinglessContent = "---\ntype: dump\ncreated: 2026-01-01\ntags:\n  - test\n---\n" + headinglessLines.join("\n") + "\n";
   await fs.writeFile(path.join(notesDir, "headingless-large.md"), headinglessContent);
 
+  // ── Task notes for query sort/filter testing ──
+  const tasksDir = path.join(tmpDir, "tasks");
+  await fs.mkdir(tasksDir, { recursive: true });
+
+  await fs.writeFile(path.join(tasksDir, "task-a.md"), `---
+type: task
+status: pending
+priority: high
+due: "2026-03-01"
+project: Supergrant
+created: 2026-02-08
+tags:
+  - task
+---
+# Task A
+`);
+
+  await fs.writeFile(path.join(tasksDir, "task-b.md"), `---
+type: task
+status: done
+priority: low
+due: "2026-02-15"
+project: Home
+created: 2026-02-09
+tags:
+  - task
+---
+# Task B
+`);
+
+  await fs.writeFile(path.join(tasksDir, "task-c.md"), `---
+type: task
+status: pending
+priority: urgent
+created: 2026-02-10
+tags:
+  - task
+---
+# Task C - no due date
+`);
+
   // Build template registry (mimicking what index.js does)
   const templateRegistry = new Map();
   const templateFiles = await fs.readdir(templateDir);
@@ -1108,6 +1149,61 @@ describe("handleQuery", () => {
     const result = await handler({ status: "active", limit: 1 });
     const text = result.content[0].text;
     assert.ok(text.includes("1 note"));
+  });
+
+  it("filters by custom_fields", async () => {
+    const result = await handlers.get("vault_query")({
+      type: "task",
+      custom_fields: { priority: "high" },
+      folder: "tasks"
+    });
+    assert.ok(result.content[0].text.includes("task-a.md"));
+    assert.ok(!result.content[0].text.includes("task-b.md"));
+    assert.ok(!result.content[0].text.includes("task-c.md"));
+  });
+
+  it("sorts by priority descending (urgent first)", async () => {
+    const result = await handlers.get("vault_query")({
+      type: "task",
+      folder: "tasks",
+      sort_by: "priority",
+      sort_order: "desc"
+    });
+    const text = result.content[0].text;
+    const posUrgent = text.indexOf("task-c");
+    const posHigh = text.indexOf("task-a");
+    const posLow = text.indexOf("task-b");
+    assert.ok(posUrgent < posHigh, "urgent should come before high");
+    assert.ok(posHigh < posLow, "high should come before low");
+  });
+
+  it("sorts by due date ascending (nulls last)", async () => {
+    const result = await handlers.get("vault_query")({
+      type: "task",
+      folder: "tasks",
+      sort_by: "due",
+      sort_order: "asc"
+    });
+    const text = result.content[0].text;
+    const posB = text.indexOf("task-b");
+    const posA = text.indexOf("task-a");
+    const posC = text.indexOf("task-c");
+    assert.ok(posB < posA, "earlier due date first");
+    assert.ok(posA < posC, "null due date last");
+  });
+
+  it("sort_by defaults to ascending", async () => {
+    const result = await handlers.get("vault_query")({
+      type: "task",
+      folder: "tasks",
+      sort_by: "created"
+    });
+    const text = result.content[0].text;
+    const posA = text.indexOf("task-a");
+    const posB = text.indexOf("task-b");
+    const posC = text.indexOf("task-c");
+    assert.ok(posA < posB, "earliest created first");
+    assert.ok(posB < posC, "latest created last");
   });
 });
 

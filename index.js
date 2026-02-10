@@ -245,7 +245,22 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
           created_after: { type: "string", description: "Notes created on or after this date (YYYY-MM-DD)" },
           created_before: { type: "string", description: "Notes created on or before this date (YYYY-MM-DD)" },
           folder: { type: "string", description: "Limit search to this folder" },
-          limit: { type: "number", description: "Max results to return", default: 50 }
+          limit: { type: "number", description: "Max results to return", default: 50 },
+          custom_fields: {
+            type: "object",
+            description: "Filter by arbitrary frontmatter fields (exact match). Use null to match missing fields.",
+            additionalProperties: true
+          },
+          sort_by: {
+            type: "string",
+            description: "Sort results by this frontmatter field. Smart ordering: priority uses rank (urgent>high>normal>low), dates sort chronologically, others alphabetically. Nulls sort last."
+          },
+          sort_order: {
+            type: "string",
+            enum: ["asc", "desc"],
+            description: "Sort direction (default: asc)",
+            default: "asc"
+          },
         }
       }
     },

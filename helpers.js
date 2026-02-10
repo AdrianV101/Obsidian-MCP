@@ -8,7 +8,7 @@ export const AUTO_REDIRECT_THRESHOLD = 80_000;  // ~20k tokens
 export const FORCE_HARD_CAP = 400_000;           // ~100k tokens
 export const CHUNK_SIZE = 80_000;                 // chars per chunk
 
-const PRIORITY_RANKS = { urgent: 0, high: 1, normal: 2, low: 3 };
+const PRIORITY_RANKS = { urgent: 3, high: 2, normal: 1, low: 0 };
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
