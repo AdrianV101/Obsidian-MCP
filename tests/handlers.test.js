@@ -1622,4 +1622,18 @@ describe("handleMove", () => {
     const text = result.content[0].text;
     assert.ok(text.toLowerCase().includes("ambig"), `Expected ambiguity warning but got: ${text}`);
   });
+
+  it("rewrites full-path wikilinks [[folder/name]]", async () => {
+    const srcDir = path.join(tmpDir, "move-fullpath");
+    await fs.mkdir(srcDir, { recursive: true });
+    await fs.writeFile(path.join(srcDir, "fp-source.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# FP Source\n");
+    await fs.writeFile(path.join(srcDir, "fp-ref.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# FP Ref\nSee [[move-fullpath/fp-source]] for details.\n");
+
+    const h = await freshHandlersFor(tmpDir);
+    await h.get("vault_move")({ old_path: "move-fullpath/fp-source.md", new_path: "move-fullpath/fp-dest.md" });
+
+    const refContent = await fs.readFile(path.join(srcDir, "fp-ref.md"), "utf-8");
+    assert.ok(refContent.includes("[[fp-dest]]"), `Expected [[fp-dest]] but got: ${refContent}`);
+    assert.ok(!refContent.includes("[[move-fullpath/fp-source]]"));
+  });
 });
