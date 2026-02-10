@@ -125,11 +125,7 @@ Folder-scoped tools (`vault_search`, `vault_query`, `vault_tags`, `vault_recent`
 - Partial names match by substring: `"Obsidian-MCP"` → `"01-Projects/Obsidian-MCP"`
 - Ambiguous matches return an error listing candidates
 
-Write tools (`vault_write`, `vault_append`, `vault_edit`) require exact paths to prevent accidental modifications.
-
-Hybrid tools:
-- `vault_trash` - source supports fuzzy resolution (read-like), no destination
-- `vault_move` - source supports fuzzy resolution (read-like), destination requires exact path (write-like)
+Write/destructive tools (`vault_write`, `vault_append`, `vault_edit`, `vault_trash`, `vault_move`) require exact paths to prevent accidental modifications.
 
 Implementation: `helpers.js` (`buildBasenameMap`, `resolveFuzzyPath`, `resolveFuzzyFolder`)
 

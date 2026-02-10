@@ -651,7 +651,7 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
   }
 
   async function handleTrash(args) {
-    const resolvedRelative = resolveFuzzyPath(args.path, basenameMap, allFilesSet);
+    const resolvedRelative = args.path;
     const filePath = resolvePath(resolvedRelative);
 
     // Verify file exists
@@ -706,8 +706,8 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
   }
 
   async function handleMove(args) {
-    // Resolve source with fuzzy, destination with exact
-    const oldRelative = resolveFuzzyPath(args.old_path, basenameMap, allFilesSet);
+    // Both source and destination require exact paths (destructive operation)
+    const oldRelative = args.old_path;
     const oldAbsolute = resolvePath(oldRelative);
     const newRelative = args.new_path;
     const newAbsolute = resolvePath(newRelative);

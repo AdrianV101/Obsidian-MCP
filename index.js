@@ -291,18 +291,18 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
       inputSchema: {
         type: "object",
         properties: {
-          path: { type: "string", description: "File to trash (supports fuzzy path resolution)" }
+          path: { type: "string", description: "Path to the file to trash (exact path required)" }
         },
         required: ["path"]
       }
     },
     {
       name: "vault_move",
-      description: "Move or rename a markdown file within the vault. Automatically updates wikilinks in all files that reference the moved file. Source supports fuzzy path resolution; destination must be an exact path.",
+      description: "Move or rename a markdown file within the vault. Automatically updates wikilinks in all files that reference the moved file. Both paths must be exact.",
       inputSchema: {
         type: "object",
         properties: {
-          old_path: { type: "string", description: "Current file path (supports fuzzy resolution)" },
+          old_path: { type: "string", description: "Current file path (exact path required)" },
           new_path: { type: "string", description: "Destination path (exact, must not already exist)" },
           update_links: { type: "boolean", description: "Update wikilinks in other files pointing to this note (default: true)", default: true }
         },
