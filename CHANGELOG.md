@@ -4,20 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.1.0] - 2026-02-10
-
-### Added
-- `vault_peek` tool for inspecting file metadata and structure without reading full content (size, frontmatter, heading outline with line numbers, preview)
-- `vault_read` auto-redirect: files >80k chars return peek data instead of content, with guidance on available pagination params
-- `vault_read` chunk reading: read large files in ~80k char chunks (`chunk` param, 1-indexed)
-- `vault_read` line range reading: read specific line ranges (`lines` param with `start`/`end`)
-- `vault_read` force bypass: `force` param to override auto-redirect (hard-capped at ~400k chars)
-
 ## [1.0.0] - 2026-02-09
 
 ### Added
-- Core MCP server with 14 tools for Obsidian vault interaction
-- `vault_read` with pagination support (heading-based, tail lines, tail sections)
+- Core MCP server with 15 tools for Obsidian vault interaction
+- `vault_read` with pagination support (heading-based, tail lines, tail sections, chunk, line range); auto-redirects large files (>80k chars) to peek data; `force` param to bypass redirect (hard-capped at ~400k chars)
+- `vault_peek` for inspecting file metadata and structure without reading full content (size, frontmatter, heading outline with line numbers, preview)
 - `vault_write` with template-based note creation enforcing YAML frontmatter
 - `vault_append` with positional insert (after heading, before heading, end of section)
 - `vault_edit` for surgical single-occurrence string replacement
