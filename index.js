@@ -92,7 +92,7 @@ Built-in variables (auto-substituted):
 - <% tp.file.title %> - Derived from output path filename
 
 Required: frontmatter.tags - provide at least one tag for the note.
-Optional: frontmatter.status, frontmatter.project, frontmatter.deciders (depending on template type).
+Optional: frontmatter.status, frontmatter.priority, frontmatter.project, frontmatter.deciders, frontmatter.due, frontmatter.source (depending on template type).
 Pass custom <%...%> variables via the 'variables' parameter.`,
       inputSchema: {
         type: "object",
@@ -114,8 +114,11 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
             properties: {
               tags: { type: "array", items: { type: "string" }, description: "Tags for the note (required)" },
               status: { type: "string", description: "Note status" },
+              priority: { type: "string", description: "Priority level (for tasks)" },
               project: { type: "string", description: "Project name (for devlogs)" },
-              deciders: { type: "string", description: "Decision makers (for ADRs)" }
+              deciders: { type: "string", description: "Decision makers (for ADRs)" },
+              due: { type: "string", description: "Due date (for tasks)" },
+              source: { type: "string", description: "Source reference (for tasks)" }
             }
           },
           createDirs: { type: "boolean", description: "Create parent directories if they don't exist", default: true }
