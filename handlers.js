@@ -17,6 +17,7 @@ import {
   resolveFuzzyFolder,
   computePeek,
   formatPeek,
+  updateFrontmatter,
   AUTO_REDIRECT_THRESHOLD,
   FORCE_HARD_CAP,
   CHUNK_SIZE,
@@ -784,6 +785,21 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     return { content: [{ type: "text", text }] };
   }
 
+  async function handleUpdateFrontmatter(args) {
+    const filePath = resolvePath(args.path);
+    const content = await fs.readFile(filePath, "utf-8");
+    const { content: newContent, frontmatter } = updateFrontmatter(content, args.fields || {});
+    await fs.writeFile(filePath, newContent, "utf-8");
+
+    const lines = Object.entries(frontmatter).map(([k, v]) => {
+      const display = Array.isArray(v) ? `[${v.join(", ")}]` : String(v);
+      return `${k}: ${display}`;
+    });
+    return {
+      content: [{ type: "text", text: `Updated frontmatter in ${args.path}:\n${lines.join("\n")}` }]
+    };
+  }
+
   return new Map([
     ["vault_read", handleRead],
     ["vault_write", handleWrite],
@@ -802,5 +818,6 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     ["vault_peek", handlePeek],
     ["vault_trash", handleTrash],
     ["vault_move", handleMove],
+    ["vault_update_frontmatter", handleUpdateFrontmatter],
   ]);
 }

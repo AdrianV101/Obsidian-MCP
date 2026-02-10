@@ -1374,6 +1374,7 @@ describe("createHandlers", () => {
       "vault_neighborhood", "vault_query", "vault_tags",
       "vault_activity", "vault_semantic_search", "vault_suggest_links",
       "vault_peek", "vault_trash", "vault_move",
+      "vault_update_frontmatter",
     ];
     for (const tool of expectedTools) {
       assert.ok(handlers.has(tool), `Missing handler: ${tool}`);
@@ -1381,8 +1382,8 @@ describe("createHandlers", () => {
     }
   });
 
-  it("returns exactly 17 handlers", () => {
-    assert.equal(handlers.size, 17);
+  it("returns exactly 18 handlers", () => {
+    assert.equal(handlers.size, 18);
   });
 });
 
@@ -1658,5 +1659,78 @@ describe("handleMove", () => {
     const refContent = await fs.readFile(path.join(srcDir, "fp-ref.md"), "utf-8");
     assert.ok(refContent.includes("[[fp-dest]]"), `Expected [[fp-dest]] but got: ${refContent}`);
     assert.ok(!refContent.includes("[[move-fullpath/fp-source]]"));
+  });
+});
+
+// ─── vault_update_frontmatter ─────────────────────────────────────────
+
+describe("handleUpdateFrontmatter", () => {
+  it("updates frontmatter fields in an existing note", async () => {
+    await handlers.get("vault_write")({
+      template: "task",
+      path: "tasks/fm-update-test.md",
+      frontmatter: { tags: ["task"] }
+    });
+    const result = await handlers.get("vault_update_frontmatter")({
+      path: "tasks/fm-update-test.md",
+      fields: { status: "done", completed: "2026-02-10" }
+    });
+    assert.ok(result.content[0].text.includes("status: done"));
+    assert.ok(result.content[0].text.includes("completed: 2026-02-10"));
+
+    const content = await fs.readFile(path.join(tmpDir, "tasks/fm-update-test.md"), "utf-8");
+    assert.ok(content.includes("status: done"));
+    assert.ok(content.includes("completed:") && content.includes("2026-02-10"), "completed field present");
+    assert.ok(content.includes("## Description"), "body preserved");
+  });
+
+  it("removes a field when set to null", async () => {
+    await handlers.get("vault_write")({
+      template: "task",
+      path: "tasks/fm-remove-test.md",
+      frontmatter: { tags: ["task"], priority: "high" }
+    });
+    await handlers.get("vault_update_frontmatter")({
+      path: "tasks/fm-remove-test.md",
+      fields: { priority: null }
+    });
+    const content = await fs.readFile(path.join(tmpDir, "tasks/fm-remove-test.md"), "utf-8");
+    assert.ok(!content.includes("priority:"), "priority field removed");
+  });
+
+  it("rejects deletion of protected fields", async () => {
+    await handlers.get("vault_write")({
+      template: "task",
+      path: "tasks/fm-protect-test.md",
+      frontmatter: { tags: ["task"] }
+    });
+    await assert.rejects(
+      () => handlers.get("vault_update_frontmatter")({
+        path: "tasks/fm-protect-test.md",
+        fields: { type: null }
+      }),
+      /cannot remove/i
+    );
+  });
+
+  it("errors on non-existent file", async () => {
+    await assert.rejects(
+      () => handlers.get("vault_update_frontmatter")({
+        path: "tasks/no-such-file.md",
+        fields: { status: "done" }
+      }),
+      /ENOENT|no such file/i
+    );
+  });
+
+  it("errors on file without frontmatter", async () => {
+    await fs.writeFile(path.join(tmpDir, "no-fm.md"), "# No Frontmatter\n\nJust body.\n");
+    await assert.rejects(
+      () => handlers.get("vault_update_frontmatter")({
+        path: "no-fm.md",
+        fields: { status: "done" }
+      }),
+      /no frontmatter/i
+    );
   });
 });

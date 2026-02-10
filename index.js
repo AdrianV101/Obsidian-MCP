@@ -151,6 +151,22 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
       }
     },
     {
+      name: "vault_update_frontmatter",
+      description: "Update YAML frontmatter fields in an existing note. Parses existing frontmatter, updates specified fields, preserves everything else. Set a field to null to remove it. Protected fields (type, created, tags) cannot be removed.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Path relative to vault root (exact path required)" },
+          fields: {
+            type: "object",
+            description: "Fields to update. Set value to null to remove a field. Arrays (like tags) are replaced wholesale.",
+            additionalProperties: true
+          }
+        },
+        required: ["path", "fields"]
+      }
+    },
+    {
       name: "vault_search",
       description: "Search for text across all markdown files in the vault",
       inputSchema: {
