@@ -10,12 +10,12 @@ This is a PKM (Personal Knowledge Management) + Claude Code Integration Starter 
 
 ```bash
 # Install dependencies
-cd mcp-server && npm install
+npm install
 
 # Run the MCP server (for testing)
-VAULT_PATH="/path/to/your/vault" node mcp-server/index.js
+VAULT_PATH="/path/to/your/vault" node index.js
 
-# Start the server (from mcp-server directory)
+# Start the server
 npm start
 
 # Run unit tests
@@ -29,7 +29,7 @@ npm run lint
 
 The project consists of three parts:
 
-**MCP Server** (`mcp-server/`): A Node.js ES module server implementing the Model Context Protocol. The main entry point is `index.js` (tool definitions and request routing), with pure helper functions extracted to `helpers.js`. It provides 14 tools for vault interaction:
+**MCP Server**: A Node.js ES module server implementing the Model Context Protocol. The main entry point is `index.js` (tool definitions and request routing), with pure helper functions extracted to `helpers.js`. It provides 14 tools for vault interaction:
 - `vault_read` - Read note contents (supports pagination: `heading`, `tail`, `tail_sections`)
 - `vault_write` - Create new notes from templates (enforces frontmatter)
 - `vault_append` - Add content to existing files, with optional positional insert (after/before heading, end of section)
@@ -54,7 +54,7 @@ Explores the graph neighborhood around a note by traversing wikilinks using BFS.
 - Detects ambiguous links (multiple files with same basename) and annotates them
 - Per-call indexes: basename resolution map + incoming link index (no persistent state)
 - Params: `path` (required), `depth` (default: 2), `direction` (`"both"` | `"outgoing"` | `"incoming"`)
-- Implementation: `mcp-server/graph.js` module (link resolution, BFS traversal, formatting)
+- Implementation: `graph.js` module (link resolution, BFS traversal, formatting)
 
 ### vault_semantic_search (Semantic Similarity Search)
 
@@ -106,7 +106,7 @@ vault_activity({ action: "clear" })                 // Clear all history
 vault_activity({ action: "clear", before: "2026-01-01" })  // Clear old entries
 ```
 
-Implementation: `mcp-server/activity.js` (ActivityLog class)
+Implementation: `activity.js` (ActivityLog class)
 
 ### Fuzzy Path Resolution
 
@@ -124,7 +124,7 @@ Folder-scoped tools (`vault_search`, `vault_query`, `vault_tags`, `vault_recent`
 
 Write tools (`vault_write`, `vault_append`, `vault_edit`) require exact paths to prevent accidental modifications.
 
-Implementation: `mcp-server/helpers.js` (`buildBasenameMap`, `resolveFuzzyPath`, `resolveFuzzyFolder`)
+Implementation: `helpers.js` (`buildBasenameMap`, `resolveFuzzyPath`, `resolveFuzzyFolder`)
 
 **Templates** (`templates/`): Obsidian note templates for project documentation:
 - `project-index.md` - Project overview with YAML frontmatter
@@ -150,7 +150,7 @@ Register the MCP server in `~/.claude/settings.json`:
   "mcpServers": {
     "obsidian-pkm": {
       "command": "node",
-      "args": ["/absolute/path/to/mcp-server/index.js"],
+      "args": ["/absolute/path/to/index.js"],
       "env": {
         "VAULT_PATH": "/absolute/path/to/obsidian/vault",
         "OPENAI_API_KEY": "sk-..."

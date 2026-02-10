@@ -14,7 +14,6 @@ Be respectful, constructive, and inclusive. We follow the [Contributor Covenant]
 
 1. Clone the repo and install dependencies:
    ```bash
-   cd mcp-server
    npm install
    ```
 
@@ -42,15 +41,14 @@ Be respectful, constructive, and inclusive. We follow the [Contributor Covenant]
 ## Architecture Overview
 
 ```
-mcp-server/
-  index.js        - MCP server setup, tool definitions, request routing
-  handlers.js     - Tool handler implementations (all 14 handlers)
-  helpers.js      - Pure helper functions (path resolution, filtering, templates, fuzzy matching)
-  graph.js        - Wikilink resolution and BFS graph traversal
-  embeddings.js   - Semantic search (OpenAI embeddings, SQLite + sqlite-vec)
-  activity.js     - Activity logging (session tracking, SQLite)
-  utils.js        - Shared utilities (frontmatter parsing, file listing)
-templates/        - Obsidian note templates (copy to vault's 05-Templates/)
+index.js        - MCP server setup, tool definitions, request routing
+handlers.js     - Tool handler implementations (all 14 handlers)
+helpers.js      - Pure helper functions (path resolution, filtering, templates, fuzzy matching)
+graph.js        - Wikilink resolution and BFS graph traversal
+embeddings.js   - Semantic search (OpenAI embeddings, SQLite + sqlite-vec)
+activity.js     - Activity logging (session tracking, SQLite)
+utils.js        - Shared utilities (frontmatter parsing, file listing)
+templates/      - Obsidian note templates (copy to vault's 05-Templates/)
 ```
 
 ## Code Style
