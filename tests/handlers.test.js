@@ -148,6 +148,60 @@ tags:
 # Notes Index
 `);
 
+  // ── Notes for trash/move testing ──
+  const moveDir = path.join(tmpDir, "moveable");
+  await fs.mkdir(moveDir, { recursive: true });
+
+  await fs.writeFile(path.join(moveDir, "target.md"), `---
+type: research
+created: 2026-01-01
+tags:
+  - test
+---
+# Target Note
+
+Content of the target note.
+`);
+
+  await fs.writeFile(path.join(moveDir, "linker-a.md"), `---
+type: fleeting
+created: 2026-01-01
+tags:
+  - test
+---
+# Linker A
+
+This links to [[target]] and also [[target#heading]].
+`);
+
+  await fs.writeFile(path.join(moveDir, "linker-b.md"), `---
+type: fleeting
+created: 2026-01-01
+tags:
+  - test
+---
+# Linker B
+
+This links to [[target|Target Display]] and [[gamma]].
+`);
+
+  // A file with no incoming links (safe to trash)
+  await fs.writeFile(path.join(moveDir, "orphan.md"), `---
+type: fleeting
+created: 2026-01-01
+tags:
+  - test
+---
+# Orphan Note
+
+No other file links here.
+`);
+
+  // A destination file for collision testing (in .trash/)
+  const trashDir = path.join(tmpDir, ".trash", "moveable");
+  await fs.mkdir(trashDir, { recursive: true });
+  await fs.writeFile(path.join(trashDir, "orphan.md"), "previously trashed");
+
   // Create large test files for auto-redirect and chunk testing
   const largeContent = "---\ntype: research\ncreated: 2026-01-01\ntags:\n  - test\n---\n# Large File\n\n## Section A\n\n" +
     "x".repeat(90_000) + "\n\n## Section B\n\nSmall section content.\n";
