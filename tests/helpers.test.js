@@ -18,6 +18,11 @@ import {
   buildBasenameMap,
   resolveFuzzyPath,
   resolveFuzzyFolder,
+  computePeek,
+  formatPeek,
+  AUTO_REDIRECT_THRESHOLD,
+  FORCE_HARD_CAP,
+  CHUNK_SIZE,
 } from "../helpers.js";
 
 describe("resolvePath", () => {
@@ -736,5 +741,178 @@ describe("resolveFuzzyFolder", () => {
   it("is case-insensitive", () => {
     const result = resolveFuzzyFolder("obsidian-mcp", allFiles);
     assert.equal(result, "01-Projects/Obsidian-MCP");
+  });
+});
+
+describe("constants", () => {
+  it("exports AUTO_REDIRECT_THRESHOLD as 80000", () => {
+    assert.equal(AUTO_REDIRECT_THRESHOLD, 80_000);
+  });
+
+  it("exports FORCE_HARD_CAP as 400000", () => {
+    assert.equal(FORCE_HARD_CAP, 400_000);
+  });
+
+  it("exports CHUNK_SIZE as 80000", () => {
+    assert.equal(CHUNK_SIZE, 80_000);
+  });
+});
+
+describe("computePeek", () => {
+  it("returns correct size metrics", () => {
+    const content = "---\ntype: note\ncreated: 2026-01-01\ntags:\n  - test\n---\n# Title\n\nLine 1\nLine 2\n";
+    const result = computePeek(content, "test/note.md");
+    assert.equal(result.sizeChars, content.length);
+    assert.equal(result.sizeLines, content.split("\n").length);
+    assert.equal(result.path, "test/note.md");
+  });
+
+  it("extracts frontmatter", () => {
+    const content = "---\ntype: research\ncreated: 2026-01-01\ntags:\n  - dev\n---\n# Title\n";
+    const result = computePeek(content, "test.md");
+    assert.equal(result.frontmatter.type, "research");
+    assert.deepEqual(result.frontmatter.tags, ["dev"]);
+  });
+
+  it("returns null frontmatter for files without it", () => {
+    const content = "# Just a heading\n\nSome content.\n";
+    const result = computePeek(content, "test.md");
+    assert.equal(result.frontmatter, null);
+  });
+
+  it("builds heading outline with line numbers and levels", () => {
+    const content = "---\ntype: note\ncreated: 2026-01-01\ntags:\n  - t\n---\n# Title\n\n## Section One\n\nContent.\n\n## Section Two\n\nMore.\n";
+    const result = computePeek(content, "test.md");
+    assert.equal(result.headings.length, 3);
+    assert.equal(result.headings[0].heading, "# Title");
+    assert.equal(result.headings[0].level, 1);
+    assert.equal(result.headings[1].heading, "## Section One");
+    assert.equal(result.headings[1].level, 2);
+    assert.equal(result.headings[2].heading, "## Section Two");
+    assert.equal(result.headings[2].level, 2);
+  });
+
+  it("includes line numbers for headings", () => {
+    const content = "# Title\n\n## Section\n\nText.\n";
+    const result = computePeek(content, "test.md");
+    assert.equal(result.headings[0].lineNumber, 1);
+    assert.equal(result.headings[1].lineNumber, 3);
+  });
+
+  it("includes line numbers accounting for frontmatter", () => {
+    const content = "---\ntype: note\ncreated: 2026-01-01\ntags:\n  - t\n---\n# Title\n";
+    const result = computePeek(content, "test.md");
+    assert.equal(result.headings[0].lineNumber, 7);
+  });
+
+  it("computes approximate char counts per section", () => {
+    const content = "# Title\n\n## Short\n\nHi.\n\n## Long\n\n" + "x".repeat(500) + "\n";
+    const result = computePeek(content, "test.md");
+    const shortSection = result.headings.find(h => h.heading === "## Short");
+    const longSection = result.headings.find(h => h.heading === "## Long");
+    assert.ok(longSection.charCount > shortSection.charCount);
+  });
+
+  it("computes totalChunks", () => {
+    const content = "x".repeat(200_000);
+    const result = computePeek(content, "big.md");
+    assert.equal(result.totalChunks, 3); // 200k / 80k = 2.5, ceil = 3
+  });
+
+  it("totalChunks is 1 for small files", () => {
+    const content = "Small file.\n";
+    const result = computePeek(content, "small.md");
+    assert.equal(result.totalChunks, 1);
+  });
+
+  it("returns preview of first ~10 non-frontmatter lines", () => {
+    const lines = Array.from({ length: 20 }, (_, i) => `Line ${i + 1}`);
+    const content = "---\ntype: note\ncreated: 2026-01-01\ntags:\n  - t\n---\n" + lines.join("\n") + "\n";
+    const result = computePeek(content, "test.md");
+    assert.ok(result.preview.includes("Line 1"));
+    assert.ok(result.preview.includes("Line 10"));
+    assert.ok(!result.preview.includes("Line 11"));
+  });
+
+  it("handles empty file", () => {
+    const result = computePeek("", "empty.md");
+    assert.equal(result.sizeChars, 0);
+    assert.equal(result.sizeLines, 1); // "".split("\n") = [""]
+    assert.equal(result.headings.length, 0);
+    assert.equal(result.frontmatter, null);
+    assert.equal(result.totalChunks, 0);
+  });
+
+  it("handles file with only frontmatter", () => {
+    const content = "---\ntype: note\ncreated: 2026-01-01\ntags:\n  - t\n---\n";
+    const result = computePeek(content, "test.md");
+    assert.equal(result.headings.length, 0);
+    assert.ok(result.frontmatter !== null);
+    assert.equal(result.preview, "");
+  });
+});
+
+describe("formatPeek", () => {
+  const basePeekData = {
+    path: "notes/big.md",
+    sizeChars: 90000,
+    sizeLines: 2000,
+    frontmatter: { type: "devlog", created: "2026-01-01", tags: ["dev"] },
+    headings: [
+      { heading: "# Title", level: 1, lineNumber: 7, charCount: 100 },
+      { heading: "## Section A", level: 2, lineNumber: 10, charCount: 45000 },
+      { heading: "## Section B", level: 2, lineNumber: 500, charCount: 400 },
+    ],
+    preview: "Some preview text here.",
+    totalChunks: 2,
+  };
+
+  it("includes file path and size info", () => {
+    const text = formatPeek(basePeekData);
+    assert.ok(text.includes("notes/big.md"));
+    assert.ok(text.includes("90,000") || text.includes("90000"));
+    assert.ok(text.includes("2,000") || text.includes("2000"));
+  });
+
+  it("includes heading outline with line numbers", () => {
+    const text = formatPeek(basePeekData);
+    assert.ok(text.includes("# Title"));
+    assert.ok(text.includes("## Section A"));
+    assert.ok(text.includes("## Section B"));
+    assert.match(text, /L\d+/);
+  });
+
+  it("includes frontmatter fields", () => {
+    const text = formatPeek(basePeekData);
+    assert.ok(text.includes("devlog"));
+  });
+
+  it("includes preview", () => {
+    const text = formatPeek(basePeekData);
+    assert.ok(text.includes("Some preview text here."));
+  });
+
+  it("includes redirect guidance when redirected=true", () => {
+    const text = formatPeek(basePeekData, { redirected: true });
+    assert.ok(text.includes("heading"));
+    assert.ok(text.includes("chunk"));
+    assert.ok(text.includes("force"));
+  });
+
+  it("omits redirect guidance when not redirected", () => {
+    const text = formatPeek(basePeekData);
+    assert.ok(!text.includes("force"));
+  });
+
+  it("handles null frontmatter", () => {
+    const data = { ...basePeekData, frontmatter: null };
+    const text = formatPeek(data);
+    assert.ok(text.includes("notes/big.md"));
+  });
+
+  it("handles empty headings", () => {
+    const data = { ...basePeekData, headings: [] };
+    const text = formatPeek(data);
+    assert.ok(text.includes("notes/big.md"));
   });
 });

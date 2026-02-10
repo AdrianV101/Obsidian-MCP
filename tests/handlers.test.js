@@ -148,6 +148,15 @@ tags:
 # Notes Index
 `);
 
+  // Create large test files for auto-redirect and chunk testing
+  const largeContent = "---\ntype: research\ncreated: 2026-01-01\ntags:\n  - test\n---\n# Large File\n\n## Section A\n\n" +
+    "x".repeat(90_000) + "\n\n## Section B\n\nSmall section content.\n";
+  await fs.writeFile(path.join(notesDir, "large-file.md"), largeContent);
+
+  const headinglessLines = Array.from({ length: 5000 }, (_, i) => `Line ${i + 1}: ${"data ".repeat(20)}`);
+  const headinglessContent = "---\ntype: dump\ncreated: 2026-01-01\ntags:\n  - test\n---\n" + headinglessLines.join("\n") + "\n";
+  await fs.writeFile(path.join(notesDir, "headingless-large.md"), headinglessContent);
+
   // Build template registry (mimicking what index.js does)
   const templateRegistry = new Map();
   const templateFiles = await fs.readdir(templateDir);
@@ -265,6 +274,198 @@ describe("handleRead", () => {
       () => handler({ path: "notes/devlog.md", tail: 5, tail_sections: 2 }),
       /Only one of/
     );
+  });
+});
+
+// ─── vault_read chunk param ──────────────────────────────────────────
+
+describe("handleRead chunk param", () => {
+  it("reads chunk 1 of a large file", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/large-file.md", chunk: 1 });
+    const text = result.content[0].text;
+    assert.ok(text.includes("Chunk 1 of"));
+    assert.ok(text.includes("# Large File"));
+  });
+
+  it("reads chunk 2 of a large file", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/large-file.md", chunk: 2 });
+    const text = result.content[0].text;
+    assert.ok(text.includes("Chunk 2 of"));
+  });
+
+  it("chunk 1 on a small file returns entire content", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/alpha.md", chunk: 1 });
+    const text = result.content[0].text;
+    assert.ok(text.includes("Chunk 1 of 1"));
+    assert.ok(text.includes("# Alpha Note"));
+  });
+
+  it("throws on chunk 0", async () => {
+    const handler = handlers.get("vault_read");
+    await assert.rejects(
+      () => handler({ path: "notes/large-file.md", chunk: 0 }),
+      /Invalid chunk/
+    );
+  });
+
+  it("throws on chunk exceeding total", async () => {
+    const handler = handlers.get("vault_read");
+    await assert.rejects(
+      () => handler({ path: "notes/large-file.md", chunk: 999 }),
+      /Invalid chunk/
+    );
+  });
+
+  it("rejects chunk combined with heading (mutual exclusivity)", async () => {
+    const handler = handlers.get("vault_read");
+    await assert.rejects(
+      () => handler({ path: "notes/alpha.md", chunk: 1, heading: "# Alpha Note" }),
+      /Only one of/
+    );
+  });
+
+  it("rejects chunk combined with tail (mutual exclusivity)", async () => {
+    const handler = handlers.get("vault_read");
+    await assert.rejects(
+      () => handler({ path: "notes/alpha.md", chunk: 1, tail: 5 }),
+      /Only one of/
+    );
+  });
+});
+
+// ─── vault_read lines param ─────────────────────────────────────────
+
+describe("handleRead lines param", () => {
+  it("reads a line range", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/headingless-large.md", lines: { start: 7, end: 11 } });
+    const text = result.content[0].text;
+    assert.ok(text.includes("Lines 7-11"));
+    assert.ok(text.includes("Line 1:"));  // line 7 of file = "Line 1: data data..."
+  });
+
+  it("clamps end beyond file length", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/alpha.md", lines: { start: 1, end: 99999 } });
+    const text = result.content[0].text;
+    assert.ok(text.includes("Lines 1-"));
+    assert.ok(text.includes("# Alpha Note"));
+  });
+
+  it("reads a single line when start equals end", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/alpha.md", lines: { start: 1, end: 1 } });
+    const text = result.content[0].text;
+    assert.ok(text.includes("Lines 1-1"));
+  });
+
+  it("throws on start < 1", async () => {
+    const handler = handlers.get("vault_read");
+    await assert.rejects(
+      () => handler({ path: "notes/alpha.md", lines: { start: 0, end: 5 } }),
+      /Invalid line range/
+    );
+  });
+
+  it("throws on start > end", async () => {
+    const handler = handlers.get("vault_read");
+    await assert.rejects(
+      () => handler({ path: "notes/alpha.md", lines: { start: 10, end: 5 } }),
+      /Invalid line range/
+    );
+  });
+
+  it("throws on start beyond file length", async () => {
+    const handler = handlers.get("vault_read");
+    await assert.rejects(
+      () => handler({ path: "notes/alpha.md", lines: { start: 99999, end: 100000 } }),
+      /Invalid line range/
+    );
+  });
+
+  it("rejects lines combined with chunk (mutual exclusivity)", async () => {
+    const handler = handlers.get("vault_read");
+    await assert.rejects(
+      () => handler({ path: "notes/alpha.md", lines: { start: 1, end: 5 }, chunk: 1 }),
+      /Only one of/
+    );
+  });
+});
+
+// ─── vault_read auto-redirect ────────────────────────────────────────
+
+describe("handleRead auto-redirect", () => {
+  it("auto-redirects to peek for large files without pagination params", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/large-file.md" });
+    const text = result.content[0].text;
+    // Should contain peek data, not raw content
+    assert.ok(text.includes("Section A"));
+    assert.ok(text.includes("Section B"));
+    assert.ok(text.includes("auto-read threshold") || text.includes("exceeds"));
+    // Should NOT contain bulk filler content (preview truncates lines to 200 chars)
+    assert.ok(!text.includes("x".repeat(500)));
+  });
+
+  it("does NOT auto-redirect when heading param is given", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/large-file.md", heading: "## Section B" });
+    const text = result.content[0].text;
+    assert.ok(text.includes("Small section content."));
+    assert.ok(!text.includes("auto-read threshold"));
+  });
+
+  it("does NOT auto-redirect when chunk param is given", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/large-file.md", chunk: 1 });
+    const text = result.content[0].text;
+    assert.ok(text.includes("Chunk 1 of"));
+    assert.ok(!text.includes("auto-read threshold"));
+  });
+
+  it("does NOT auto-redirect when tail param is given", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/large-file.md", tail: 5 });
+    const text = result.content[0].text;
+    assert.ok(!text.includes("auto-read threshold"));
+  });
+
+  it("does NOT auto-redirect for small files", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/alpha.md" });
+    const text = result.content[0].text;
+    assert.ok(text.includes("# Alpha Note"));
+    assert.ok(!text.includes("auto-read threshold"));
+  });
+
+  it("auto-redirects headingless large files with chunk guidance", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/headingless-large.md" });
+    const text = result.content[0].text;
+    assert.ok(text.includes("auto-read threshold") || text.includes("exceeds"));
+    assert.ok(text.includes("chunk"));
+  });
+});
+
+// ─── vault_read force param ─────────────────────────────────────────
+
+describe("handleRead force param", () => {
+  it("force=true returns full content for large file within hard cap", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/large-file.md", force: true });
+    const text = result.content[0].text;
+    assert.ok(text.length > 80000);
+    assert.ok(!text.includes("auto-read threshold"));
+  });
+
+  it("force=true on small file returns content normally", async () => {
+    const handler = handlers.get("vault_read");
+    const result = await handler({ path: "notes/alpha.md", force: true });
+    const text = result.content[0].text;
+    assert.ok(text.includes("# Alpha Note"));
   });
 });
 
@@ -1013,6 +1214,56 @@ describe("handleNeighborhood depth cap", () => {
   });
 });
 
+// ─── vault_peek ──────────────────────────────────────────────────────
+
+describe("handlePeek", () => {
+  it("returns peek data for a normal file", async () => {
+    const handler = handlers.get("vault_peek");
+    const result = await handler({ path: "notes/devlog.md" });
+    const text = result.content[0].text;
+    assert.ok(text.includes("devlog.md"));
+    assert.ok(text.includes("## 2026-01-01"));
+    assert.ok(text.includes("## 2026-02-01"));
+  });
+
+  it("includes frontmatter info", async () => {
+    const handler = handlers.get("vault_peek");
+    const result = await handler({ path: "notes/devlog.md" });
+    const text = result.content[0].text;
+    assert.ok(text.includes("devlog"));
+  });
+
+  it("includes heading outline with line numbers", async () => {
+    const handler = handlers.get("vault_peek");
+    const result = await handler({ path: "notes/devlog.md" });
+    const text = result.content[0].text;
+    assert.match(text, /L\d+/);
+  });
+
+  it("supports fuzzy path resolution", async () => {
+    const handler = handlers.get("vault_peek");
+    const result = await handler({ path: "devlog" });
+    const text = result.content[0].text;
+    assert.ok(text.includes("devlog.md"));
+  });
+
+  it("throws on non-existent file", async () => {
+    const handler = handlers.get("vault_peek");
+    await assert.rejects(
+      () => handler({ path: "nonexistent.md" }),
+      /not found|No matching file/i
+    );
+  });
+
+  it("includes size information", async () => {
+    const handler = handlers.get("vault_peek");
+    const result = await handler({ path: "notes/alpha.md" });
+    const text = result.content[0].text;
+    assert.ok(text.includes("chars"));
+    assert.ok(text.includes("lines"));
+  });
+});
+
 // ─── createHandlers ────────────────────────────────────────────────────
 
 describe("createHandlers", () => {
@@ -1022,6 +1273,7 @@ describe("createHandlers", () => {
       "vault_search", "vault_list", "vault_recent", "vault_links",
       "vault_neighborhood", "vault_query", "vault_tags",
       "vault_activity", "vault_semantic_search", "vault_suggest_links",
+      "vault_peek",
     ];
     for (const tool of expectedTools) {
       assert.ok(handlers.has(tool), `Missing handler: ${tool}`);
@@ -1029,7 +1281,7 @@ describe("createHandlers", () => {
     }
   });
 
-  it("returns exactly 14 handlers", () => {
-    assert.equal(handlers.size, 14);
+  it("returns exactly 15 handlers", () => {
+    assert.equal(handlers.size, 15);
   });
 });

@@ -2,6 +2,11 @@ import fs from "fs/promises";
 import path from "path";
 import { extractFrontmatter } from "./utils.js";
 
+// Large-file thresholds (character counts, ~4 chars per token)
+export const AUTO_REDIRECT_THRESHOLD = 80_000;  // ~20k tokens
+export const FORCE_HARD_CAP = 400_000;           // ~100k tokens
+export const CHUNK_SIZE = 80_000;                 // chars per chunk
+
 /**
  * Resolve a relative path against the vault root with directory traversal protection.
  *
@@ -611,4 +616,117 @@ export function resolveFuzzyFolder(folder, allFiles) {
   throw new Error(
     `"${folder}" matches ${matches.length} folders:\n${list}\nUse a more specific path.`
   );
+}
+
+/**
+ * Compute peek metadata for a file's content without returning the full body.
+ *
+ * @param {string} content - full file content
+ * @param {string} relativePath - vault-relative path (for display)
+ * @returns {{ path: string, sizeChars: number, sizeLines: number, frontmatter: Object|null, headings: Array<{heading: string, level: number, lineNumber: number, charCount: number}>, preview: string, totalChunks: number }}
+ */
+export function computePeek(content, relativePath) {
+  const sizeChars = content.length;
+  const lines = content.split("\n");
+  const sizeLines = lines.length;
+  const frontmatter = extractFrontmatter(content);
+  const totalChunks = sizeChars === 0 ? 0 : Math.ceil(sizeChars / CHUNK_SIZE);
+
+  // Determine where frontmatter ends (line index)
+  let bodyStartLine = 0;
+  if (content.startsWith("---")) {
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i] === "---") {
+        bodyStartLine = i + 1;
+        break;
+      }
+    }
+  }
+
+  // Build heading outline with line numbers and char counts
+  const headings = [];
+  for (let i = bodyStartLine; i < lines.length; i++) {
+    const level = parseHeadingLevel(lines[i]);
+    if (level > 0) {
+      headings.push({ heading: lines[i], level, lineNumber: i + 1, charCount: 0 });
+    }
+  }
+
+  // Compute charCount for each heading: chars from this heading to next same-or-higher-level heading (or EOF)
+  for (let h = 0; h < headings.length; h++) {
+    const startLine = headings[h].lineNumber - 1; // 0-indexed
+    let endLine = lines.length;
+    for (let next = h + 1; next < headings.length; next++) {
+      if (headings[next].level <= headings[h].level) {
+        endLine = headings[next].lineNumber - 1;
+        break;
+      }
+    }
+    headings[h].charCount = lines.slice(startLine, endLine).join("\n").length;
+  }
+
+  // Preview: first ~10 non-empty lines after frontmatter, truncated to 200 chars each
+  const bodyLines = lines.slice(bodyStartLine);
+  const previewLines = bodyLines.filter(l => l.trim() !== "").slice(0, 10)
+    .map(l => l.length > 200 ? l.slice(0, 200) + "..." : l);
+  const preview = previewLines.join("\n");
+
+  return { path: relativePath, sizeChars, sizeLines, frontmatter, headings, preview, totalChunks };
+}
+
+/**
+ * Format peek data into a human-readable string.
+ *
+ * @param {{ path: string, sizeChars: number, sizeLines: number, frontmatter: Object|null, headings: Array, preview: string, totalChunks: number }} peekData
+ * @param {{ redirected?: boolean }} options
+ * @returns {string}
+ */
+export function formatPeek(peekData, { redirected = false } = {}) {
+  const { path: filePath, sizeChars, sizeLines, frontmatter, headings, preview, totalChunks } = peekData;
+  const parts = [];
+
+  parts.push(`## File: ${filePath}`);
+  parts.push(`**Size:** ${sizeChars.toLocaleString()} chars, ${sizeLines.toLocaleString()} lines`);
+  if (totalChunks > 1) {
+    parts.push(`**Chunks:** ${totalChunks} (use \`chunk\` param to read by chunk)`);
+  }
+
+  if (frontmatter) {
+    parts.push("");
+    parts.push("### Frontmatter");
+    for (const [key, value] of Object.entries(frontmatter)) {
+      const display = Array.isArray(value) ? `[${value.join(", ")}]` : String(value);
+      parts.push(`${key}: ${display}`);
+    }
+  }
+
+  if (headings.length > 0) {
+    parts.push("");
+    parts.push("### Heading Outline");
+    for (const h of headings) {
+      parts.push(`L${h.lineNumber}  ${h.heading} (~${h.charCount} chars)`);
+    }
+  }
+
+  if (preview) {
+    parts.push("");
+    parts.push("### Preview");
+    parts.push(preview);
+  }
+
+  if (redirected) {
+    parts.push("");
+    parts.push("---");
+    parts.push(`This file exceeds the auto-read threshold (~${(AUTO_REDIRECT_THRESHOLD / 1000).toFixed(0)}k chars). To read content, use one of:`);
+    parts.push('- `heading: "## Section Name"` - read a specific section');
+    parts.push("- `tail: N` - read last N lines");
+    parts.push("- `tail_sections: N` - read last N sections");
+    if (totalChunks > 1) {
+      parts.push(`- \`chunk: 1\` - read chunk 1 of ${totalChunks}`);
+    }
+    parts.push("- `lines: { start: 1, end: 200 }` - read a line range");
+    parts.push("- `force: true` - read full content (WARNING: may degrade model performance, hard-capped at ~400k chars)");
+  }
+
+  return parts.join("\n");
 }

@@ -45,7 +45,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   const tools = [
     {
       name: "vault_read",
-      description: "Read the contents of a markdown file from the vault. Supports pagination: read a single section by heading, last N lines, or last N heading-level sections.",
+      description: "Read the contents of a markdown file from the vault. Supports pagination: read a single section by heading, last N lines, last N heading-level sections, chunk number, or line range. Files exceeding ~80k characters auto-redirect to peek data (file structure/outline) unless a pagination param or force=true is specified.",
       inputSchema: {
         type: "object",
         properties: {
@@ -53,7 +53,29 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           heading: { type: "string", description: "Read only the section under this heading (exact match, case-sensitive). Returns heading line + content until next same-or-higher-level heading." },
           tail: { type: "number", description: "Return the last N lines of the file. Frontmatter is always prepended." },
           tail_sections: { type: "number", description: "Return the last N sections at the specified heading level. Frontmatter is always prepended." },
-          section_level: { type: "number", description: "Heading level for tail_sections (1=`#`, 2=`##`, etc). Default: 2.", default: 2 }
+          section_level: { type: "number", description: "Heading level for tail_sections (1=`#`, 2=`##`, etc). Default: 2.", default: 2 },
+          chunk: { type: "number", description: "Read a specific chunk of the file (1-indexed). Each chunk is ~80k characters. Use vault_peek to see total chunks." },
+          lines: {
+            type: "object",
+            description: "Read a range of lines from the file (1-indexed, inclusive).",
+            properties: {
+              start: { type: "number", description: "Start line (1-indexed, inclusive)" },
+              end: { type: "number", description: "End line (1-indexed, inclusive)" }
+            },
+            required: ["start", "end"]
+          },
+          force: { type: "boolean", description: "Bypass auto-redirect for large files. WARNING: only use when full content is essential, as large files degrade model performance. Hard-capped at ~400k chars (~100k tokens)." }
+        },
+        required: ["path"]
+      }
+    },
+    {
+      name: "vault_peek",
+      description: "Inspect a file's metadata and structure without reading full content. Returns file size, frontmatter, heading outline with line numbers and approximate section sizes, and a brief preview. Use this to plan which sections to read from large files.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Path relative to vault root (supports fuzzy resolution: 'devlog' resolves to full path)" }
         },
         required: ["path"]
       }
