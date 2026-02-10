@@ -8,6 +8,47 @@ export const AUTO_REDIRECT_THRESHOLD = 80_000;  // ~20k tokens
 export const FORCE_HARD_CAP = 400_000;           // ~100k tokens
 export const CHUNK_SIZE = 80_000;                 // chars per chunk
 
+const PRIORITY_RANKS = { urgent: 0, high: 1, normal: 2, low: 3 };
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Compare two frontmatter values for sorting.
+ * Smart ordering: priority uses custom ranks, dates sort chronologically, strings use localeCompare.
+ * null/undefined always sort last.
+ *
+ * @param {*} a - first value
+ * @param {*} b - second value
+ * @param {string} field - frontmatter field name (used for priority detection)
+ * @returns {number} negative if a < b, positive if a > b, 0 if equal
+ */
+export function compareFrontmatterValues(a, b, field) {
+  // Normalize Date objects to YYYY-MM-DD strings
+  if (a instanceof Date) a = a.toISOString().split("T")[0];
+  if (b instanceof Date) b = b.toISOString().split("T")[0];
+
+  const aNull = a === null || a === undefined;
+  const bNull = b === null || b === undefined;
+  if (aNull && bNull) return 0;
+  if (aNull) return 1;
+  if (bNull) return -1;
+
+  const aStr = String(a);
+  const bStr = String(b);
+
+  // Priority field with known values
+  if (field === "priority" && aStr in PRIORITY_RANKS && bStr in PRIORITY_RANKS) {
+    return PRIORITY_RANKS[aStr] - PRIORITY_RANKS[bStr];
+  }
+
+  // Date-like values (YYYY-MM-DD pattern)
+  if (DATE_PATTERN.test(aStr) && DATE_PATTERN.test(bStr)) {
+    return aStr < bStr ? -1 : aStr > bStr ? 1 : 0;
+  }
+
+  // String comparison
+  return aStr.localeCompare(bStr);
+}
+
 /**
  * Resolve a relative path against the vault root with directory traversal protection.
  *
@@ -73,6 +114,20 @@ export function matchesFilters(metadata, filters) {
   }
   if (filters.created_before && createdStr > filters.created_before) {
     return false;
+  }
+
+  if (filters.custom_fields) {
+    for (const [key, value] of Object.entries(filters.custom_fields)) {
+      let metaValue = metadata[key];
+      if (metaValue instanceof Date) {
+        metaValue = metaValue.toISOString().split("T")[0];
+      }
+      if (value === null) {
+        if (metaValue !== undefined && metaValue !== null) return false;
+      } else {
+        if (String(metaValue ?? "") !== String(value)) return false;
+      }
+    }
   }
 
   return true;
