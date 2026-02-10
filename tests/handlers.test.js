@@ -1327,7 +1327,7 @@ describe("createHandlers", () => {
       "vault_search", "vault_list", "vault_recent", "vault_links",
       "vault_neighborhood", "vault_query", "vault_tags",
       "vault_activity", "vault_semantic_search", "vault_suggest_links",
-      "vault_peek", "vault_trash",
+      "vault_peek", "vault_trash", "vault_move",
     ];
     for (const tool of expectedTools) {
       assert.ok(handlers.has(tool), `Missing handler: ${tool}`);
@@ -1335,8 +1335,8 @@ describe("createHandlers", () => {
     }
   });
 
-  it("returns exactly 16 handlers", () => {
-    assert.equal(handlers.size, 16);
+  it("returns exactly 17 handlers", () => {
+    assert.equal(handlers.size, 17);
   });
 });
 
@@ -1481,5 +1481,145 @@ describe("handleTrash", () => {
       () => handler({ path: "nonexistent-file-xyz.md" }),
       /not found|No matching file/i
     );
+  });
+});
+
+// ─── vault_move ───────────────────────────────────────────────────────
+
+describe("handleMove", () => {
+  // Helper to create fresh handlers with new temp files
+  async function freshHandlersFor(tmpDir) {
+    const templateRegistry = new Map();
+    const tdir = path.join(tmpDir, "05-Templates");
+    for (const file of await fs.readdir(tdir)) {
+      const name = path.basename(file, ".md");
+      const content = await fs.readFile(path.join(tdir, file), "utf-8");
+      templateRegistry.set(name, { content, description: name });
+    }
+    return createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry,
+      semanticIndex: null,
+      activityLog: null,
+      sessionId: "test-move-" + Math.random().toString(36).slice(2, 8),
+    });
+  }
+
+  it("moves a file and preserves content", async () => {
+    const srcDir = path.join(tmpDir, "move-basic");
+    const destDir = path.join(tmpDir, "archive");
+    await fs.mkdir(srcDir, { recursive: true });
+    await fs.writeFile(path.join(srcDir, "doc.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Doc\nContent.\n");
+
+    const h = await freshHandlersFor(tmpDir);
+    const result = await h.get("vault_move")({ old_path: "move-basic/doc.md", new_path: "archive/doc.md" });
+
+    const newContent = await fs.readFile(path.join(destDir, "doc.md"), "utf-8");
+    assert.ok(newContent.includes("# Doc"));
+    const oldExists = await fs.access(path.join(srcDir, "doc.md")).then(() => true, () => false);
+    assert.ok(!oldExists);
+    assert.ok(result.content[0].text.includes("archive/doc.md"));
+  });
+
+  it("updates wikilinks in other files", async () => {
+    const srcDir = path.join(tmpDir, "move-links");
+    await fs.mkdir(srcDir, { recursive: true });
+    await fs.writeFile(path.join(srcDir, "moving.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Moving\n");
+    await fs.writeFile(path.join(srcDir, "stays.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Stays\nLinks to [[moving]] here.\n");
+
+    const h = await freshHandlersFor(tmpDir);
+    await h.get("vault_move")({ old_path: "move-links/moving.md", new_path: "move-links/moved.md" });
+
+    const staysContent = await fs.readFile(path.join(srcDir, "stays.md"), "utf-8");
+    assert.ok(staysContent.includes("[[moved]]"), `Expected [[moved]] but got: ${staysContent}`);
+    assert.ok(!staysContent.includes("[[moving]]"));
+  });
+
+  it("preserves aliases when updating links", async () => {
+    const srcDir = path.join(tmpDir, "move-alias");
+    await fs.mkdir(srcDir, { recursive: true });
+    await fs.writeFile(path.join(srcDir, "src.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Src\n");
+    await fs.writeFile(path.join(srcDir, "ref.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Ref\nSee [[src|Source File]].\n");
+
+    const h = await freshHandlersFor(tmpDir);
+    await h.get("vault_move")({ old_path: "move-alias/src.md", new_path: "move-alias/dest.md" });
+
+    const refContent = await fs.readFile(path.join(srcDir, "ref.md"), "utf-8");
+    assert.ok(refContent.includes("[[dest|Source File]]"), `Expected [[dest|Source File]] but got: ${refContent}`);
+  });
+
+  it("skips link updating when update_links is false", async () => {
+    const srcDir = path.join(tmpDir, "move-nolinks");
+    await fs.mkdir(srcDir, { recursive: true });
+    await fs.writeFile(path.join(srcDir, "moving2.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Moving2\n");
+    await fs.writeFile(path.join(srcDir, "ref2.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Ref2\nLinks to [[moving2]].\n");
+
+    const h = await freshHandlersFor(tmpDir);
+    await h.get("vault_move")({ old_path: "move-nolinks/moving2.md", new_path: "move-nolinks/moved2.md", update_links: false });
+
+    const refContent = await fs.readFile(path.join(srcDir, "ref2.md"), "utf-8");
+    assert.ok(refContent.includes("[[moving2]]"), "Links should NOT be updated");
+  });
+
+  it("errors when destination already exists", async () => {
+    const srcDir = path.join(tmpDir, "move-exists");
+    await fs.mkdir(srcDir, { recursive: true });
+    await fs.writeFile(path.join(srcDir, "a.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# A\n");
+    await fs.writeFile(path.join(srcDir, "b.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# B\n");
+
+    const h = await freshHandlersFor(tmpDir);
+    await assert.rejects(
+      () => h.get("vault_move")({ old_path: "move-exists/a.md", new_path: "move-exists/b.md" }),
+      /already exists/i
+    );
+  });
+
+  it("creates destination directories if needed", async () => {
+    const srcDir = path.join(tmpDir, "move-mkdir");
+    await fs.mkdir(srcDir, { recursive: true });
+    await fs.writeFile(path.join(srcDir, "doc.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Doc\n");
+
+    const h = await freshHandlersFor(tmpDir);
+    await h.get("vault_move")({ old_path: "move-mkdir/doc.md", new_path: "deep/nested/dir/doc.md" });
+
+    const newContent = await fs.readFile(path.join(tmpDir, "deep", "nested", "dir", "doc.md"), "utf-8");
+    assert.ok(newContent.includes("# Doc"));
+  });
+
+  it("uses fuzzy resolution for source path", async () => {
+    const srcDir = path.join(tmpDir, "move-fuzzy");
+    await fs.mkdir(srcDir, { recursive: true });
+    await fs.writeFile(path.join(srcDir, "unique-move-note.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Unique Move\n");
+
+    const h = await freshHandlersFor(tmpDir);
+    await h.get("vault_move")({ old_path: "unique-move-note", new_path: "move-fuzzy/renamed.md" });
+
+    const newContent = await fs.readFile(path.join(srcDir, "renamed.md"), "utf-8");
+    assert.ok(newContent.includes("# Unique Move"));
+  });
+
+  it("detects post-move basename ambiguity and rewrites to full paths", async () => {
+    const dir1 = path.join(tmpDir, "move-ambig", "folder-a");
+    const dir2 = path.join(tmpDir, "move-ambig", "folder-b");
+    await fs.mkdir(dir1, { recursive: true });
+    await fs.mkdir(dir2, { recursive: true });
+
+    await fs.writeFile(path.join(dir1, "unique-src.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Unique Src\n");
+    await fs.writeFile(path.join(dir2, "same-name.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Same Name B\n");
+    await fs.writeFile(path.join(dir1, "ref.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Ref\nSee [[unique-src]].\n");
+
+    const h = await freshHandlersFor(tmpDir);
+    const result = await h.get("vault_move")({ old_path: "move-ambig/folder-a/unique-src.md", new_path: "move-ambig/folder-a/same-name.md" });
+
+    // Link should use full path to avoid ambiguity
+    const refContent = await fs.readFile(path.join(dir1, "ref.md"), "utf-8");
+    assert.ok(
+      refContent.includes("[[move-ambig/folder-a/same-name]]"),
+      `Expected full path link but got: ${refContent}`
+    );
+
+    // Output should mention ambiguity
+    const text = result.content[0].text;
+    assert.ok(text.toLowerCase().includes("ambig"), `Expected ambiguity warning but got: ${text}`);
   });
 });
