@@ -21,7 +21,7 @@ import {
   FORCE_HARD_CAP,
   CHUNK_SIZE,
 } from "./helpers.js";
-import { exploreNeighborhood, formatNeighborhood, findFilesLinkingTo } from "./graph.js";
+import { exploreNeighborhood, formatNeighborhood, findFilesLinkingTo, rewriteWikilinks } from "./graph.js";
 import { getAllMarkdownFiles, extractFrontmatter } from "./utils.js";
 
 /**
@@ -705,6 +705,85 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     return { content: [{ type: "text", text }] };
   }
 
+  async function handleMove(args) {
+    // Resolve source with fuzzy, destination with exact
+    const oldRelative = resolveFuzzyPath(args.old_path, basenameMap, allFilesSet);
+    const oldAbsolute = resolvePath(oldRelative);
+    const newRelative = args.new_path;
+    const newAbsolute = resolvePath(newRelative);
+
+    // Verify source exists
+    await fs.access(oldAbsolute);
+
+    // Verify destination does NOT exist
+    try {
+      await fs.access(newAbsolute);
+      throw new Error(`Destination already exists: ${newRelative}. Use vault_edit or vault_trash + vault_write instead.`);
+    } catch (e) {
+      if (e.code !== "ENOENT") throw e;
+    }
+
+    // Find files linking to the source (before move)
+    const allFilesList = Array.from(allFilesSet);
+    const linkingFiles = args.update_links !== false
+      ? await findFilesLinkingTo(oldRelative, vaultPath, allFilesList, basenameMap, allFilesSet)
+      : [];
+
+    // Create destination directory and move file
+    await fs.mkdir(path.dirname(newAbsolute), { recursive: true });
+    await fs.rename(oldAbsolute, newAbsolute);
+
+    // Update basename map: remove old, add new
+    allFilesSet.delete(oldRelative);
+    const oldBasename = path.basename(oldRelative, ".md").toLowerCase();
+    const oldEntries = basenameMap.get(oldBasename);
+    if (oldEntries) {
+      const idx = oldEntries.indexOf(oldRelative);
+      if (idx !== -1) oldEntries.splice(idx, 1);
+      if (oldEntries.length === 0) basenameMap.delete(oldBasename);
+    }
+
+    allFilesSet.add(newRelative);
+    const newBasename = path.basename(newRelative, ".md").toLowerCase();
+    if (!basenameMap.has(newBasename)) {
+      basenameMap.set(newBasename, []);
+    }
+    basenameMap.get(newBasename).push(newRelative);
+
+    // Determine new link target — use full path if basename is now ambiguous
+    const newEntries = basenameMap.get(newBasename);
+    const isAmbiguous = newEntries && newEntries.length > 1;
+    const newLinkTarget = isAmbiguous
+      ? newRelative.replace(/\.md$/, "")
+      : path.basename(newRelative, ".md");
+
+    // Determine old link target (what links currently use)
+    const oldLinkBasename = path.basename(oldRelative, ".md");
+
+    // Rewrite wikilinks in referring files
+    let updatedCount = 0;
+    if (args.update_links !== false) {
+      for (const { file, content } of linkingFiles) {
+        const updated = rewriteWikilinks(content, oldLinkBasename, newLinkTarget);
+        if (updated !== content) {
+          await fs.writeFile(path.join(vaultPath, file), updated, "utf-8");
+          updatedCount++;
+        }
+      }
+    }
+
+    // Build output
+    let text = `Moved ${oldRelative} → ${newRelative}`;
+    if (updatedCount > 0) {
+      text += `\nUpdated wikilinks in ${updatedCount} file${updatedCount === 1 ? "" : "s"}`;
+    }
+    if (isAmbiguous) {
+      text += `\n\n**Note:** Basename "${path.basename(newRelative, ".md")}" is ambiguous (${newEntries.length} files). Links were rewritten using full paths.`;
+    }
+
+    return { content: [{ type: "text", text }] };
+  }
+
   return new Map([
     ["vault_read", handleRead],
     ["vault_write", handleWrite],
@@ -722,5 +801,6 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     ["vault_suggest_links", handleSuggestLinks],
     ["vault_peek", handlePeek],
     ["vault_trash", handleTrash],
+    ["vault_move", handleMove],
   ]);
 }
