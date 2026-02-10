@@ -757,14 +757,14 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
       ? newRelative.replace(/\.md$/, "")
       : path.basename(newRelative, ".md");
 
-    // Determine old link target (what links currently use)
-    const oldLinkBasename = path.basename(oldRelative, ".md");
+    // Determine old link target — pass full path so both [[basename]] and [[folder/name]] links match
+    const oldLinkTarget = oldRelative.replace(/\.md$/, "");
 
     // Rewrite wikilinks in referring files
     let updatedCount = 0;
     if (args.update_links !== false) {
       for (const { file, content } of linkingFiles) {
-        const updated = rewriteWikilinks(content, oldLinkBasename, newLinkTarget);
+        const updated = rewriteWikilinks(content, oldLinkTarget, newLinkTarget);
         if (updated !== content) {
           await fs.writeFile(path.join(vaultPath, file), updated, "utf-8");
           updatedCount++;
