@@ -29,7 +29,7 @@ npm run lint
 
 The project consists of three parts:
 
-**MCP Server**: A Node.js ES module server implementing the Model Context Protocol. The main entry point is `index.js` (tool definitions and request routing), with pure helper functions extracted to `helpers.js`. It provides 15 tools for vault interaction:
+**MCP Server**: A Node.js ES module server implementing the Model Context Protocol. The main entry point is `index.js` (tool definitions and request routing), with pure helper functions extracted to `helpers.js`. It provides 17 tools for vault interaction:
 - `vault_read` - Read note contents (supports pagination: `heading`, `tail`, `tail_sections`, `chunk`, `lines`; auto-redirects to peek data for files >80k chars; `force` bypasses redirect)
 - `vault_peek` - Inspect file metadata/structure without reading full content (size, frontmatter, heading outline, preview)
 - `vault_write` - Create new notes from templates (enforces frontmatter)
@@ -44,6 +44,8 @@ The project consists of three parts:
 - `vault_query` - Query notes by YAML frontmatter (type, status, tags, dates)
 - `vault_tags` - Discover all tags with per-note counts; supports folder scoping, glob patterns, inline `#tag` parsing
 - `vault_activity` - Query/clear activity log (all tool calls with timestamps and session IDs)
+- `vault_trash` - Soft-delete to `.trash/` (Obsidian convention), warns about broken incoming links
+- `vault_move` - Move/rename files with automatic wikilink updating across vault
 
 The server uses `VAULT_PATH` environment variable (defaults to `~/Documents/PKM`) and includes path security to prevent directory escaping.
 
@@ -124,6 +126,10 @@ Folder-scoped tools (`vault_search`, `vault_query`, `vault_tags`, `vault_recent`
 - Ambiguous matches return an error listing candidates
 
 Write tools (`vault_write`, `vault_append`, `vault_edit`) require exact paths to prevent accidental modifications.
+
+Hybrid tools:
+- `vault_trash` - source supports fuzzy resolution (read-like), no destination
+- `vault_move` - source supports fuzzy resolution (read-like), destination requires exact path (write-like)
 
 Implementation: `helpers.js` (`buildBasenameMap`, `resolveFuzzyPath`, `resolveFuzzyFolder`)
 
