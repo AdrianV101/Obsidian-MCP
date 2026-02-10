@@ -15,6 +15,11 @@ import {
   buildBasenameMap,
   resolveFuzzyPath,
   resolveFuzzyFolder,
+  computePeek,
+  formatPeek,
+  AUTO_REDIRECT_THRESHOLD,
+  FORCE_HARD_CAP,
+  CHUNK_SIZE,
 } from "./helpers.js";
 import { exploreNeighborhood, formatNeighborhood } from "./graph.js";
 import { getAllMarkdownFiles, extractFrontmatter } from "./utils.js";
@@ -61,9 +66,33 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     const content = await fs.readFile(filePath, "utf-8");
 
     // Validate mutual exclusivity
-    const modes = [args.heading, args.tail, args.tail_sections].filter(Boolean);
-    if (modes.length > 1) {
-      throw new Error("Only one of 'heading', 'tail', or 'tail_sections' can be specified at a time");
+    const modeCount = [
+      args.heading !== undefined,
+      args.tail !== undefined,
+      args.tail_sections !== undefined,
+      args.chunk !== undefined,
+      args.lines !== undefined,
+    ].filter(Boolean).length;
+    if (modeCount > 1) {
+      throw new Error("Only one of 'heading', 'tail', 'tail_sections', 'chunk', or 'lines' can be specified at a time");
+    }
+
+    // Auto-redirect: return peek data for large files without explicit pagination
+    const hasExplicitMode = args.heading !== undefined || args.tail !== undefined ||
+      args.tail_sections !== undefined || args.chunk !== undefined || args.lines !== undefined;
+    if (!hasExplicitMode && !args.force && content.length > AUTO_REDIRECT_THRESHOLD) {
+      const relativePath = path.relative(vaultPath, filePath);
+      const peekData = computePeek(content, relativePath);
+      return { content: [{ type: "text", text: formatPeek(peekData, { redirected: true }) }] };
+    }
+
+    // Force hard cap
+    if (args.force && content.length > FORCE_HARD_CAP) {
+      const relativePath = path.relative(vaultPath, filePath);
+      const peekData = computePeek(content, relativePath);
+      const text = formatPeek(peekData, { redirected: true }) +
+        `\n\n**Hard cap reached.** File is ${content.length.toLocaleString()} chars, exceeding the ~400k char limit even with force=true. Use heading, chunk, or lines params to read portions.`;
+      return { content: [{ type: "text", text }] };
     }
 
     let text = content;
@@ -95,9 +124,33 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     } else if (args.tail_sections) {
       const level = args.section_level || 2;
       text = extractTailSections(content, args.tail_sections, level);
+    } else if (args.chunk !== undefined) {
+      const totalChunks = Math.ceil(content.length / CHUNK_SIZE);
+      if (args.chunk < 1 || args.chunk > totalChunks) {
+        throw new Error(`Invalid chunk: ${args.chunk}. File has ${totalChunks} chunk${totalChunks === 1 ? "" : "s"} (1-indexed).`);
+      }
+      const start = (args.chunk - 1) * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, content.length);
+      text = `[Chunk ${args.chunk} of ${totalChunks}, chars ${start + 1}-${end} of ${content.length}]\n\n` + content.slice(start, end);
+    } else if (args.lines) {
+      const allLines = content.split("\n");
+      const { start, end } = args.lines;
+      if (start < 1 || end < start || start > allLines.length) {
+        throw new Error(`Invalid line range: ${start}-${end}. File has ${allLines.length} lines.`);
+      }
+      const clampedEnd = Math.min(end, allLines.length);
+      text = `[Lines ${start}-${clampedEnd} of ${allLines.length}]\n\n` + allLines.slice(start - 1, clampedEnd).join("\n");
     }
 
     return { content: [{ type: "text", text }] };
+  }
+
+  async function handlePeek(args) {
+    const filePath = resolveFile(args.path);
+    const content = await fs.readFile(filePath, "utf-8");
+    const relativePath = path.relative(vaultPath, filePath);
+    const peekData = computePeek(content, relativePath);
+    return { content: [{ type: "text", text: formatPeek(peekData) }] };
   }
 
   async function handleWrite(args) {
@@ -612,5 +665,6 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     ["vault_activity", handleActivity],
     ["vault_semantic_search", handleSemanticSearch],
     ["vault_suggest_links", handleSuggestLinks],
+    ["vault_peek", handlePeek],
   ]);
 }
