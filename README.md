@@ -76,7 +76,6 @@ Ambiguous matches return an error listing candidates. Exact paths always work un
 ### 1. Install
 
 ```bash
-cd mcp-server
 npm install
 ```
 
@@ -89,7 +88,7 @@ Add to `~/.claude/settings.json`:
   "mcpServers": {
     "obsidian-pkm": {
       "command": "node",
-      "args": ["/absolute/path/to/mcp-server/index.js"],
+      "args": ["/absolute/path/to/index.js"],
       "env": {
         "VAULT_PATH": "/absolute/path/to/your/obsidian/vault"
       }
@@ -161,14 +160,15 @@ graph LR
 ```
 
 ```
-mcp-server/
 ├── index.js          # MCP server, tool definitions, request routing
+├── handlers.js       # Tool handler implementations
 ├── helpers.js        # Pure functions (path security, filtering, templates)
 ├── graph.js          # Wikilink resolution and BFS graph traversal
 ├── embeddings.js     # Semantic index (OpenAI embeddings, SQLite + sqlite-vec)
 ├── activity.js       # Activity log (session tracking, SQLite)
 ├── utils.js          # Shared utilities (frontmatter parsing, file listing)
-└── package.json
+├── templates/        # Obsidian note templates
+└── sample-project/   # Sample CLAUDE.md for your repos
 ```
 
 All paths passed to tools are relative to vault root. The server includes path security to prevent directory traversal.

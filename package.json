@@ -7,10 +7,18 @@
   "engines": {
     "node": ">=18"
   },
+  "files": [
+    "*.js",
+    "!eslint.config.js",
+    "CHANGELOG.md",
+    "templates/",
+    "sample-project/"
+  ],
   "scripts": {
     "start": "node index.js",
     "test": "node --test tests/*.test.js",
-    "lint": "eslint *.js tests/"
+    "lint": "eslint *.js tests/",
+    "prepublishOnly": "npm test && npm run lint"
   },
   "repository": {
     "type": "git",
