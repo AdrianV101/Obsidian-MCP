@@ -1448,38 +1448,19 @@ describe("handleTrash", () => {
     assert.equal(prevTrash, "already in trash", "Previous trash entry should not be overwritten");
   });
 
-  it("supports fuzzy path resolution", async () => {
-    const filePath = path.join(tmpDir, "moveable", "fuzzy-trash.md");
-    await fs.writeFile(filePath, "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Fuzzy Trash\n");
-
-    const templateRegistry = new Map();
-    const tdir = path.join(tmpDir, "05-Templates");
-    for (const file of await fs.readdir(tdir)) {
-      const name = path.basename(file, ".md");
-      const content = await fs.readFile(path.join(tdir, file), "utf-8");
-      templateRegistry.set(name, { content, description: name });
-    }
-    const freshHandlers = await createHandlers({
-      vaultPath: tmpDir,
-      templateRegistry,
-      semanticIndex: null,
-      activityLog: null,
-      sessionId: "test-session-trash-fuzzy",
-    });
-
-    const handler = freshHandlers.get("vault_trash");
-    const result = await handler({ path: "fuzzy-trash" });
-
-    // Should resolve and trash successfully
-    assert.ok(!result.isError);
-    assert.ok(result.content[0].text.includes(".trash/"));
+  it("requires exact path (rejects fuzzy names)", async () => {
+    const handler = handlers.get("vault_trash");
+    await assert.rejects(
+      () => handler({ path: "target" }),
+      /ENOENT|no such file/i
+    );
   });
 
   it("throws on non-existent file", async () => {
     const handler = handlers.get("vault_trash");
     await assert.rejects(
       () => handler({ path: "nonexistent-file-xyz.md" }),
-      /not found|No matching file/i
+      /ENOENT|not found|No matching file/i
     );
   });
 });
@@ -1586,16 +1567,12 @@ describe("handleMove", () => {
     assert.ok(newContent.includes("# Doc"));
   });
 
-  it("uses fuzzy resolution for source path", async () => {
-    const srcDir = path.join(tmpDir, "move-fuzzy");
-    await fs.mkdir(srcDir, { recursive: true });
-    await fs.writeFile(path.join(srcDir, "unique-move-note.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Unique Move\n");
-
+  it("requires exact source path (rejects fuzzy names)", async () => {
     const h = await freshHandlersFor(tmpDir);
-    await h.get("vault_move")({ old_path: "unique-move-note", new_path: "move-fuzzy/renamed.md" });
-
-    const newContent = await fs.readFile(path.join(srcDir, "renamed.md"), "utf-8");
-    assert.ok(newContent.includes("# Unique Move"));
+    await assert.rejects(
+      () => h.get("vault_move")({ old_path: "target", new_path: "moveable/renamed.md" }),
+      /ENOENT|no such file/i
+    );
   });
 
   it("detects post-move basename ambiguity and rewrites to full paths", async () => {
