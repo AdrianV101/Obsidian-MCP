@@ -74,6 +74,44 @@ export async function findFilesLinkingTo(targetPath, vaultPath, allFiles, resolu
   return linking;
 }
 
+/**
+ * Rewrite wikilinks in content that match an old target to point to a new target.
+ * Preserves aliases (|text) and heading/block references (#heading, ^block).
+ *
+ * @param {string} content - file content
+ * @param {string} oldTarget - old link target (basename or path, without .md)
+ * @param {string} newTarget - new link target (basename or path, without .md)
+ * @returns {string} content with links rewritten
+ */
+export function rewriteWikilinks(content, oldTarget, newTarget) {
+  // Match [[...]] links, capturing the full inner text
+  return content.replace(/\[\[([^\]]+)\]\]/g, (fullMatch, inner) => {
+    // Split on | first to separate alias
+    const pipeIdx = inner.indexOf("|");
+    const linkPart = pipeIdx !== -1 ? inner.slice(0, pipeIdx) : inner;
+    const aliasPart = pipeIdx !== -1 ? inner.slice(pipeIdx) : ""; // includes the |
+
+    // Split link part on # to separate heading/block ref
+    const hashIdx = linkPart.indexOf("#");
+    const pathPart = hashIdx !== -1 ? linkPart.slice(0, hashIdx) : linkPart;
+    const fragPart = hashIdx !== -1 ? linkPart.slice(hashIdx) : ""; // includes the #
+
+    // Check if this link's path matches the old target
+    const pathTrimmed = pathPart.trim();
+    const pathNoExt = pathTrimmed.endsWith(".md") ? pathTrimmed.slice(0, -3) : pathTrimmed;
+
+    // Match by exact path or by basename
+    const oldNoExt = oldTarget.endsWith(".md") ? oldTarget.slice(0, -3) : oldTarget;
+    const oldBasename = oldNoExt.includes("/") ? oldNoExt.split("/").pop() : oldNoExt;
+
+    if (pathNoExt === oldNoExt || pathNoExt === oldBasename) {
+      return `[[${newTarget}${fragPart}${aliasPart}]]`;
+    }
+
+    return fullMatch;
+  });
+}
+
 // --- Link Discovery ---
 
 /**
