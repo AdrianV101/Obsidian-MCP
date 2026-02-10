@@ -20,6 +20,7 @@ import {
   resolveFuzzyFolder,
   computePeek,
   formatPeek,
+  updateFrontmatter,
   AUTO_REDIRECT_THRESHOLD,
   FORCE_HARD_CAP,
   CHUNK_SIZE,
@@ -933,5 +934,90 @@ describe("formatPeek", () => {
     const data = { ...basePeekData, headings: [] };
     const text = formatPeek(data);
     assert.ok(text.includes("notes/big.md"));
+  });
+});
+
+describe("updateFrontmatter", () => {
+  it("updates an existing field", () => {
+    const content = "---\ntype: task\nstatus: pending\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n\nBody text.\n";
+    const { content: result, frontmatter } = updateFrontmatter(content, { status: "done" });
+    assert.equal(frontmatter.status, "done");
+    assert.ok(result.includes("Body text."), "body preserved");
+    assert.equal(frontmatter.type, "task", "other fields preserved");
+  });
+
+  it("creates a new field that does not exist", () => {
+    const content = "---\ntype: task\nstatus: pending\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    const { frontmatter } = updateFrontmatter(content, { completed: "2026-02-10" });
+    assert.equal(frontmatter.completed, "2026-02-10");
+    assert.equal(frontmatter.status, "pending", "existing fields preserved");
+  });
+
+  it("removes a field when value is null", () => {
+    const content = "---\ntype: task\nstatus: pending\npriority: high\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    const { content: result, frontmatter } = updateFrontmatter(content, { priority: null });
+    assert.equal(frontmatter.priority, undefined);
+    assert.ok(!result.includes("priority:"), "field removed from output");
+  });
+
+  it("protects required field: type cannot be set to null", () => {
+    const content = "---\ntype: task\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    assert.throws(() => updateFrontmatter(content, { type: null }), /cannot remove.*type/i);
+  });
+
+  it("protects required field: created cannot be set to null", () => {
+    const content = "---\ntype: task\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    assert.throws(() => updateFrontmatter(content, { created: null }), /cannot remove.*created/i);
+  });
+
+  it("protects required field: tags cannot be set to null", () => {
+    const content = "---\ntype: task\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    assert.throws(() => updateFrontmatter(content, { tags: null }), /cannot remove.*tags/i);
+  });
+
+  it("rejects empty tags array", () => {
+    const content = "---\ntype: task\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    assert.throws(() => updateFrontmatter(content, { tags: [] }), /tags.*non-empty/i);
+  });
+
+  it("replaces tags array wholesale", () => {
+    const content = "---\ntype: task\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    const { frontmatter } = updateFrontmatter(content, { tags: ["task", "grocery", "home"] });
+    assert.deepEqual(frontmatter.tags, ["task", "grocery", "home"]);
+  });
+
+  it("allows updating type to a new string value", () => {
+    const content = "---\ntype: task\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    const { frontmatter } = updateFrontmatter(content, { type: "project" });
+    assert.equal(frontmatter.type, "project");
+  });
+
+  it("throws on file with no frontmatter", () => {
+    const content = "# Title\n\nNo frontmatter here.\n";
+    assert.throws(() => updateFrontmatter(content, { status: "done" }), /no frontmatter/i);
+  });
+
+  it("rejects invalid field keys", () => {
+    const content = "---\ntype: task\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    assert.throws(() => updateFrontmatter(content, { "bad key!": "value" }), /invalid.*key/i);
+  });
+
+  it("handles multiple updates in one call", () => {
+    const content = "---\ntype: task\nstatus: pending\npriority: normal\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    const { frontmatter } = updateFrontmatter(content, {
+      status: "done",
+      priority: null,
+      completed: "2026-02-10"
+    });
+    assert.equal(frontmatter.status, "done");
+    assert.equal(frontmatter.priority, undefined);
+    assert.equal(frontmatter.completed, "2026-02-10");
+  });
+
+  it("preserves body content exactly", () => {
+    const body = "\n# My Task\n\n## Description\n\nBuy groceries for dinner.\n\n## Context\n\nWe need food.\n";
+    const content = "---\ntype: task\ncreated: 2026-02-10\ntags:\n  - task\n---" + body;
+    const { content: result } = updateFrontmatter(content, { status: "done" });
+    assert.ok(result.endsWith(body), "body should be preserved exactly");
   });
 });

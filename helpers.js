@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import yaml from "js-yaml";
 import { extractFrontmatter } from "./utils.js";
 
 // Large-file thresholds (character counts, ~4 chars per token)
@@ -729,4 +730,64 @@ export function formatPeek(peekData, { redirected = false } = {}) {
   }
 
   return parts.join("\n");
+}
+
+/**
+ * Update YAML frontmatter fields in a markdown file's content.
+ * Parses existing frontmatter, merges changes, re-serializes.
+ *
+ * @param {string} content - full file content with frontmatter
+ * @param {Object} fields - fields to update (null value = delete, non-null = set/create)
+ * @returns {{ content: string, frontmatter: Object }} updated content and resulting frontmatter
+ * @throws {Error} if no frontmatter, protected field deletion, invalid key, or empty tags
+ */
+export function updateFrontmatter(content, fields) {
+  if (!content.startsWith("---")) {
+    throw new Error("No frontmatter found in file");
+  }
+  const endIndex = content.indexOf("\n---", 3);
+  if (endIndex === -1) {
+    throw new Error("No frontmatter found in file (unclosed)");
+  }
+
+  const yamlStr = content.slice(4, endIndex);
+  const body = content.slice(endIndex + 4);
+
+  let parsed;
+  try {
+    parsed = yaml.load(yamlStr, { schema: yaml.JSON_SCHEMA });
+  } catch (e) {
+    throw new Error(`Failed to parse frontmatter: ${e.message}`, { cause: e });
+  }
+  if (!parsed || typeof parsed !== "object") {
+    parsed = {};
+  }
+
+  const PROTECTED_FIELDS = ["type", "created", "tags"];
+  const KEY_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
+
+  for (const [key, value] of Object.entries(fields)) {
+    if (!KEY_REGEX.test(key)) {
+      throw new Error(`Invalid frontmatter key: "${key}". Keys must start with a letter and contain only letters, digits, hyphens, or underscores.`);
+    }
+
+    if (value === null) {
+      if (PROTECTED_FIELDS.includes(key)) {
+        throw new Error(`Cannot remove required field: "${key}". Protected fields: ${PROTECTED_FIELDS.join(", ")}`);
+      }
+      delete parsed[key];
+    } else {
+      if (key === "tags") {
+        if (!Array.isArray(value) || value.filter(Boolean).length === 0) {
+          throw new Error("tags must be a non-empty array");
+        }
+      }
+      parsed[key] = value;
+    }
+  }
+
+  const newYaml = yaml.dump(parsed, { lineWidth: -1, noRefs: true, sortKeys: false });
+  const newContent = "---\n" + newYaml + "---" + body;
+
+  return { content: newContent, frontmatter: { ...parsed } };
 }
