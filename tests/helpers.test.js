@@ -266,6 +266,25 @@ describe("substituteTemplateVariables", () => {
     });
     assert.ok(result.includes("my-field_1: new"));
   });
+
+  it("skips null frontmatter values (leaves template default)", () => {
+    const template = "---\ntype: task\nstatus: pending\npriority: normal\ndue: null\n---\n# Title\n";
+    const result = substituteTemplateVariables(template, {
+      title: "Test",
+      frontmatter: { status: "done", due: null }
+    });
+    assert.ok(result.includes("status: done"), "should update status");
+    assert.ok(result.includes("due: null"), "should leave due as template default");
+  });
+
+  it("skips undefined frontmatter values", () => {
+    const template = "---\ntype: task\nstatus: pending\n---\n# Title\n";
+    const result = substituteTemplateVariables(template, {
+      title: "Test",
+      frontmatter: { status: undefined }
+    });
+    assert.ok(result.includes("status: pending"), "should leave status as template default");
+  });
 });
 
 describe("validateFrontmatterStrict", () => {

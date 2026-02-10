@@ -38,6 +38,30 @@ deciders:
 <!-- What -->
 `;
 
+const TASK_TEMPLATE = `---
+type: task
+created: <% tp.date.now("YYYY-MM-DD") %>
+status: pending
+priority: normal
+due: null
+project: null
+source: null
+tags:
+  - task
+---
+
+# <% tp.file.title %>
+
+## Description
+
+
+## Context
+
+
+## Acceptance Criteria
+
+`;
+
 before(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "handlers-test-"));
 
@@ -46,6 +70,7 @@ before(async () => {
   await fs.mkdir(templateDir, { recursive: true });
   await fs.writeFile(path.join(templateDir, "research-note.md"), TEMPLATE_CONTENT);
   await fs.writeFile(path.join(templateDir, "adr.md"), ADR_TEMPLATE);
+  await fs.writeFile(path.join(templateDir, "task.md"), TASK_TEMPLATE);
 
   // Create some test notes
   const notesDir = path.join(tmpDir, "notes");
@@ -711,6 +736,27 @@ describe("handleWrite", () => {
     const content = await fs.readFile(path.join(tmpDir, outPath), "utf-8");
     assert.ok(content.includes("custom-tag"));
     assert.ok(content.includes("The Team"));
+  });
+
+  it("creates a task note with custom frontmatter fields", async () => {
+    const result = await handlers.get("vault_write")({
+      template: "task",
+      path: "tasks/buy-groceries.md",
+      frontmatter: {
+        tags: ["task", "grocery"],
+        status: "pending",
+        priority: "high",
+        project: "Home",
+        source: "telegram",
+      }
+    });
+    const content = await fs.readFile(path.join(tmpDir, "tasks/buy-groceries.md"), "utf-8");
+    assert.ok(content.includes("type: task"));
+    assert.ok(content.includes("priority: high"));
+    assert.ok(content.includes("project: Home"));
+    assert.ok(content.includes("source: telegram"));
+    assert.ok(content.includes("## Description"));
+    assert.ok(result.content[0].text.includes("task"));
   });
 });
 
