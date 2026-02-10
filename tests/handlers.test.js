@@ -1327,7 +1327,7 @@ describe("createHandlers", () => {
       "vault_search", "vault_list", "vault_recent", "vault_links",
       "vault_neighborhood", "vault_query", "vault_tags",
       "vault_activity", "vault_semantic_search", "vault_suggest_links",
-      "vault_peek",
+      "vault_peek", "vault_trash",
     ];
     for (const tool of expectedTools) {
       assert.ok(handlers.has(tool), `Missing handler: ${tool}`);
@@ -1335,7 +1335,151 @@ describe("createHandlers", () => {
     }
   });
 
-  it("returns exactly 15 handlers", () => {
-    assert.equal(handlers.size, 15);
+  it("returns exactly 16 handlers", () => {
+    assert.equal(handlers.size, 16);
+  });
+});
+
+// ─── vault_trash ──────────────────────────────────────────────────────
+
+describe("handleTrash", () => {
+  it("moves a file to .trash/ preserving folder structure", async () => {
+    // Create a fresh file to trash
+    const filePath = path.join(tmpDir, "moveable", "to-trash.md");
+    await fs.writeFile(filePath, "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# To Trash\n");
+
+    // Rebuild handlers to pick up the new file
+    const templateRegistry = new Map();
+    const tdir = path.join(tmpDir, "05-Templates");
+    for (const file of await fs.readdir(tdir)) {
+      const name = path.basename(file, ".md");
+      const content = await fs.readFile(path.join(tdir, file), "utf-8");
+      templateRegistry.set(name, { content, description: name });
+    }
+    const freshHandlers = await createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry,
+      semanticIndex: null,
+      activityLog: null,
+      sessionId: "test-session-trash",
+    });
+
+    const handler = freshHandlers.get("vault_trash");
+    const result = await handler({ path: "moveable/to-trash.md" });
+
+    // File should be in .trash/
+    const trashed = path.join(tmpDir, ".trash", "moveable", "to-trash.md");
+    const exists = await fs.access(trashed).then(() => true, () => false);
+    assert.ok(exists, "File should exist in .trash/");
+
+    // Original should be gone
+    const originalExists = await fs.access(filePath).then(() => true, () => false);
+    assert.ok(!originalExists, "Original file should be removed");
+
+    // Output should confirm
+    assert.ok(result.content[0].text.includes("moveable/to-trash.md"));
+    assert.ok(result.content[0].text.includes(".trash/"));
+  });
+
+  it("warns about incoming links when trashing", async () => {
+    // Create linked notes
+    const trashDir2 = path.join(tmpDir, "trash-test");
+    await fs.mkdir(trashDir2, { recursive: true });
+    await fs.writeFile(path.join(trashDir2, "will-die.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Will Die\n");
+    await fs.writeFile(path.join(trashDir2, "refers.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Refers\nSee [[will-die]].\n");
+
+    const templateRegistry = new Map();
+    const tdir = path.join(tmpDir, "05-Templates");
+    for (const file of await fs.readdir(tdir)) {
+      const name = path.basename(file, ".md");
+      const content = await fs.readFile(path.join(tdir, file), "utf-8");
+      templateRegistry.set(name, { content, description: name });
+    }
+    const freshHandlers = await createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry,
+      semanticIndex: null,
+      activityLog: null,
+      sessionId: "test-session-trash-links",
+    });
+
+    const handler = freshHandlers.get("vault_trash");
+    const result = await handler({ path: "trash-test/will-die.md" });
+    const text = result.content[0].text;
+
+    assert.ok(text.includes("trash-test/refers.md"), "Should warn about file with incoming link");
+  });
+
+  it("appends timestamp suffix on .trash/ collision", async () => {
+    // Create a new file to trash
+    const filePath = path.join(tmpDir, "moveable", "orphan-dup.md");
+    await fs.writeFile(filePath, "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Orphan Dup\n");
+
+    // Also ensure .trash/moveable/orphan-dup.md exists for collision
+    await fs.mkdir(path.join(tmpDir, ".trash", "moveable"), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, ".trash", "moveable", "orphan-dup.md"), "already in trash");
+
+    const templateRegistry = new Map();
+    const tdir = path.join(tmpDir, "05-Templates");
+    for (const file of await fs.readdir(tdir)) {
+      const name = path.basename(file, ".md");
+      const content = await fs.readFile(path.join(tdir, file), "utf-8");
+      templateRegistry.set(name, { content, description: name });
+    }
+    const freshHandlers = await createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry,
+      semanticIndex: null,
+      activityLog: null,
+      sessionId: "test-session-trash-collision",
+    });
+
+    const handler = freshHandlers.get("vault_trash");
+    const result = await handler({ path: "moveable/orphan-dup.md" });
+    const text = result.content[0].text;
+
+    // Should succeed with .trash/ in output
+    assert.ok(text.includes(".trash/"), "Should mention .trash/");
+    // Original should be gone
+    const originalExists = await fs.access(filePath).then(() => true, () => false);
+    assert.ok(!originalExists, "Original should be removed");
+    // Previous trash file should still exist (not overwritten)
+    const prevTrash = await fs.readFile(path.join(tmpDir, ".trash", "moveable", "orphan-dup.md"), "utf-8");
+    assert.equal(prevTrash, "already in trash", "Previous trash entry should not be overwritten");
+  });
+
+  it("supports fuzzy path resolution", async () => {
+    const filePath = path.join(tmpDir, "moveable", "fuzzy-trash.md");
+    await fs.writeFile(filePath, "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Fuzzy Trash\n");
+
+    const templateRegistry = new Map();
+    const tdir = path.join(tmpDir, "05-Templates");
+    for (const file of await fs.readdir(tdir)) {
+      const name = path.basename(file, ".md");
+      const content = await fs.readFile(path.join(tdir, file), "utf-8");
+      templateRegistry.set(name, { content, description: name });
+    }
+    const freshHandlers = await createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry,
+      semanticIndex: null,
+      activityLog: null,
+      sessionId: "test-session-trash-fuzzy",
+    });
+
+    const handler = freshHandlers.get("vault_trash");
+    const result = await handler({ path: "fuzzy-trash" });
+
+    // Should resolve and trash successfully
+    assert.ok(!result.isError);
+    assert.ok(result.content[0].text.includes(".trash/"));
+  });
+
+  it("throws on non-existent file", async () => {
+    const handler = handlers.get("vault_trash");
+    await assert.rejects(
+      () => handler({ path: "nonexistent-file-xyz.md" }),
+      /not found|No matching file/i
+    );
   });
 });

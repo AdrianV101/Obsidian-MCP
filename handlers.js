@@ -21,7 +21,7 @@ import {
   FORCE_HARD_CAP,
   CHUNK_SIZE,
 } from "./helpers.js";
-import { exploreNeighborhood, formatNeighborhood } from "./graph.js";
+import { exploreNeighborhood, formatNeighborhood, findFilesLinkingTo } from "./graph.js";
 import { getAllMarkdownFiles, extractFrontmatter } from "./utils.js";
 
 /**
@@ -650,6 +650,61 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     };
   }
 
+  async function handleTrash(args) {
+    const resolvedRelative = resolveFuzzyPath(args.path, basenameMap, allFilesSet);
+    const filePath = resolvePath(resolvedRelative);
+
+    // Verify file exists
+    await fs.access(filePath);
+
+    // Find incoming links for warning output
+    const allFilesList = Array.from(allFilesSet);
+    const linkingFiles = await findFilesLinkingTo(resolvedRelative, vaultPath, allFilesList, basenameMap, allFilesSet);
+
+    // Determine trash destination: .trash/<original-relative-path>
+    let trashRelative = path.join(".trash", resolvedRelative);
+    let trashAbsolute = path.join(vaultPath, trashRelative);
+
+    // Handle collision: append timestamp suffix
+    try {
+      await fs.access(trashAbsolute);
+      // Collision — add timestamp
+      const ext = path.extname(resolvedRelative);
+      const base = resolvedRelative.slice(0, -ext.length);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      trashRelative = path.join(".trash", `${base}.${timestamp}${ext}`);
+      trashAbsolute = path.join(vaultPath, trashRelative);
+    } catch (e) {
+      if (e.code !== "ENOENT") throw e;
+      // No collision — use original path
+    }
+
+    // Create trash directory and move file
+    await fs.mkdir(path.dirname(trashAbsolute), { recursive: true });
+    await fs.rename(filePath, trashAbsolute);
+
+    // Update in-memory basename map
+    allFilesSet.delete(resolvedRelative);
+    const oldBasename = path.basename(resolvedRelative, ".md").toLowerCase();
+    const entries = basenameMap.get(oldBasename);
+    if (entries) {
+      const idx = entries.indexOf(resolvedRelative);
+      if (idx !== -1) entries.splice(idx, 1);
+      if (entries.length === 0) basenameMap.delete(oldBasename);
+    }
+
+    // Build output
+    let text = `Trashed ${resolvedRelative} → ${trashRelative}`;
+    if (linkingFiles.length > 0) {
+      text += `\n\n**Warning:** ${linkingFiles.length} file${linkingFiles.length === 1 ? "" : "s"} had links to this note (now broken):`;
+      for (const { file } of linkingFiles) {
+        text += `\n- ${file}`;
+      }
+    }
+
+    return { content: [{ type: "text", text }] };
+  }
+
   return new Map([
     ["vault_read", handleRead],
     ["vault_write", handleWrite],
@@ -666,5 +721,6 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     ["vault_semantic_search", handleSemanticSearch],
     ["vault_suggest_links", handleSuggestLinks],
     ["vault_peek", handlePeek],
+    ["vault_trash", handleTrash],
   ]);
 }

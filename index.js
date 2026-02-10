@@ -284,6 +284,17 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
           }
         }
       }
+    },
+    {
+      name: "vault_trash",
+      description: "Soft-delete a file by moving it to .trash/ (Obsidian convention). Reports files with broken incoming links as warnings. Use vault_move to relocate files instead.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "File to trash (supports fuzzy path resolution)" }
+        },
+        required: ["path"]
+      }
     }
   ];
 
