@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0] - 2026-02-10
+
+### Added
+- `vault_peek` tool for inspecting file metadata and structure without reading full content (size, frontmatter, heading outline with line numbers, preview)
+- `vault_read` auto-redirect: files >80k chars return peek data instead of content, with guidance on available pagination params
+- `vault_read` chunk reading: read large files in ~80k char chunks (`chunk` param, 1-indexed)
+- `vault_read` line range reading: read specific line ranges (`lines` param with `start`/`end`)
+- `vault_read` force bypass: `force` param to override auto-redirect (hard-capped at ~400k chars)
+
 ## [1.0.0] - 2026-02-09
 
 ### Added

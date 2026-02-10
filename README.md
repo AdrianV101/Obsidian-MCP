@@ -4,7 +4,7 @@
 [![Node.js >= 18](https://img.shields.io/badge/Node.js-%3E%3D18-green.svg)](https://nodejs.org/)
 [![CI](https://github.com/AdrianV101/Obsidian-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/AdrianV101/Obsidian-MCP/actions/workflows/ci.yml)
 
-An MCP (Model Context Protocol) server that gives Claude Code full read/write access to your Obsidian vault. 14 tools for note CRUD, full-text search, semantic search, graph traversal, metadata queries, and session activity tracking.
+An MCP (Model Context Protocol) server that gives Claude Code full read/write access to your Obsidian vault. 15 tools for note CRUD, full-text search, semantic search, graph traversal, metadata queries, and session activity tracking.
 
 ## Why
 
@@ -21,7 +21,8 @@ Without this, every Claude Code session starts from scratch. With it, your AI as
 
 | Tool | Description |
 |------|-------------|
-| `vault_read` | Read note contents |
+| `vault_read` | Read note contents (pagination by heading, tail, chunk, line range; auto-redirects large files to peek data) |
+| `vault_peek` | Inspect file metadata and structure without reading full content |
 | `vault_write` | Create notes from templates (enforces frontmatter) |
 | `vault_append` | Append to notes, with positional insert (after/before heading, end of section) |
 | `vault_edit` | Surgical string replacement |
