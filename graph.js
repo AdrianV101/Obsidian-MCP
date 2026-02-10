@@ -46,6 +46,34 @@ export function resolveLink(linkTarget, resolutionMap, allFilesSet) {
   return { paths: matches, ambiguous: matches.length > 1 };
 }
 
+/**
+ * Find all files that contain wikilinks resolving to a given target path.
+ * Returns file paths and their content for downstream processing (e.g., link rewriting).
+ *
+ * @param {string} targetPath - vault-relative path of the target file
+ * @param {string} vaultPath - absolute vault root
+ * @param {string[]} allFiles - all vault-relative file paths
+ * @param {Map<string, string[]>} resolutionMap - from buildBasenameMap
+ * @param {Set<string>} allFilesSet - all file paths as a Set
+ * @returns {Promise<Array<{file: string, content: string}>>}
+ */
+export async function findFilesLinkingTo(targetPath, vaultPath, allFiles, resolutionMap, allFilesSet) {
+  const linking = [];
+  for (const file of allFiles) {
+    if (file === targetPath) continue;
+    const content = await fs.readFile(path.join(vaultPath, file), "utf-8");
+    const links = extractWikilinks(content);
+    for (const link of links) {
+      const resolved = resolveLink(link, resolutionMap, allFilesSet);
+      if (resolved.paths.includes(targetPath)) {
+        linking.push({ file, content });
+        break;
+      }
+    }
+  }
+  return linking;
+}
+
 // --- Link Discovery ---
 
 /**
