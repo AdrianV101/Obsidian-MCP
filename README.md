@@ -33,7 +33,7 @@ Without this, every Claude Code session starts from scratch. With it, your AI as
 | `vault_recent` | Recently modified files |
 | `vault_links` | Wikilink analysis (incoming/outgoing) |
 | `vault_neighborhood` | Graph exploration via BFS wikilink traversal |
-| `vault_query` | Query notes by YAML frontmatter (type, status, tags, dates) |
+| `vault_query` | Query notes by YAML frontmatter (type, status, tags, dates, custom fields, sorting) |
 | `vault_tags` | Discover tags with counts; folder scoping, glob filters, inline tag parsing |
 | `vault_activity` | Session activity log for cross-conversation memory |
 | `vault_trash` | Soft-delete to `.trash/` (Obsidian convention), warns about broken incoming links |
@@ -80,6 +80,8 @@ Ambiguous matches return an error listing candidates. Exact paths always work un
 ### 1. Install
 
 ```bash
+git clone https://github.com/AdrianV101/Obsidian-MCP.git
+cd Obsidian-MCP
 npm install
 ```
 

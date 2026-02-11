@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - `vault_update_frontmatter` tool — safe, atomic YAML frontmatter field updates (set, create, delete fields with protected required fields)
+- `vault_trash` tool — soft-delete to `.trash/` (Obsidian convention) with broken incoming link warnings
+- `vault_move` tool — move/rename files with automatic wikilink updating across vault
 - `task` template for `vault_write` — structured task notes with status, priority, due date, project, and source fields
 - `vault_query` enhancements: `custom_fields` filter for arbitrary frontmatter matching, `sort_by`/`sort_order` for result ordering with smart priority and date handling
 
