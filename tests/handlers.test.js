@@ -900,6 +900,19 @@ More content.
       /File not found/
     );
   });
+
+  it("throws on unknown position value instead of writing undefined", async () => {
+    const handler = handlers.get("vault_append");
+    await assert.rejects(
+      () => handler({ path: appendFile, heading: "## Section One", position: "invalid_position", content: "x" }),
+      /Unknown position: invalid_position/
+    );
+
+    // Verify the file was NOT corrupted
+    const content = await fs.readFile(path.join(tmpDir, appendFile), "utf-8");
+    assert.ok(!content.includes("undefined"), "File should not contain 'undefined'");
+    assert.ok(content.includes("## Section One"), "File content should be intact");
+  });
 });
 
 // ─── vault_edit ────────────────────────────────────────────────────────
@@ -1083,6 +1096,51 @@ describe("handleLinks", () => {
     const handler = handlers.get("vault_links");
     const result = await handler({ path: "notes/gamma.md", direction: "outgoing" });
     assert.ok(result.content[0].text.includes("No links"));
+  });
+
+  it("detects incoming links via folder-prefixed wikilinks", async () => {
+    // Create notes where one links to another using [[folder/name]] syntax
+    const linkDir = path.join(tmpDir, "link-test");
+    await fs.mkdir(linkDir, { recursive: true });
+    await fs.writeFile(path.join(linkDir, "link-target.md"), `---
+type: fleeting
+created: 2026-01-01
+tags:
+  - test
+---
+# Link Target
+`);
+    await fs.writeFile(path.join(linkDir, "link-source.md"), `---
+type: fleeting
+created: 2026-01-01
+tags:
+  - test
+---
+# Link Source
+
+References [[link-test/link-target]] using a folder-prefixed wikilink.
+`);
+
+    // Rebuild handlers to pick up the new files
+    const templateRegistry = new Map();
+    const tdir = path.join(tmpDir, "05-Templates");
+    for (const file of await fs.readdir(tdir)) {
+      const name = path.basename(file, ".md");
+      const content = await fs.readFile(path.join(tdir, file), "utf-8");
+      templateRegistry.set(name, { content, description: name });
+    }
+    const freshHandlers = await createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry,
+      semanticIndex: null,
+      activityLog: null,
+      sessionId: "test-session-links-folder",
+    });
+
+    const handler = freshHandlers.get("vault_links");
+    const result = await handler({ path: "link-test/link-target.md", direction: "incoming" });
+    const text = result.content[0].text;
+    assert.ok(text.includes("link-test/link-source.md"), `Should detect folder-prefixed incoming link but got: ${text}`);
   });
 });
 
