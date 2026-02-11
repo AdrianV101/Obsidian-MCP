@@ -17,6 +17,8 @@ import {
   resolveFuzzyFolder,
   computePeek,
   formatPeek,
+  updateFrontmatter,
+  compareFrontmatterValues,
   AUTO_REDIRECT_THRESHOLD,
   FORCE_HARD_CAP,
   CHUNK_SIZE,
@@ -432,12 +434,12 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
       tags: args.tags,
       tags_any: args.tags_any,
       created_after: args.created_after,
-      created_before: args.created_before
+      created_before: args.created_before,
+      custom_fields: args.custom_fields,
     };
 
     for (const file of files) {
-      if (results.length >= limit) break;
-
+      if (!args.sort_by && results.length >= limit) break;
       const filePath = path.join(searchDir, file);
       const content = await fs.readFile(filePath, "utf-8");
       const metadata = extractFrontmatter(content);
@@ -447,11 +449,24 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
         const relativePath = args.folder
           ? path.join(args.folder, file)
           : file;
-        results.push({ path: relativePath, summary, tagLine });
+        results.push({ path: relativePath, summary, tagLine, metadata });
       }
     }
 
-    if (results.length === 0) {
+    // Sort results if sort_by specified
+    if (args.sort_by) {
+      const sortField = args.sort_by;
+      const sortDesc = args.sort_order === "desc";
+      results.sort((a, b) => {
+        const cmp = compareFrontmatterValues(a.metadata[sortField], b.metadata[sortField], sortField);
+        return sortDesc ? -cmp : cmp;
+      });
+    }
+
+    // Apply limit after sorting
+    const limited = results.slice(0, limit);
+
+    if (limited.length === 0) {
       return {
         content: [{
           type: "text",
@@ -460,8 +475,8 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
       };
     }
 
-    const output = `Found ${results.length} note${results.length === 1 ? "" : "s"} matching query:\n\n` +
-      results.map(r => {
+    const output = `Found ${limited.length} note${limited.length === 1 ? "" : "s"} matching query:\n\n` +
+      limited.map(r => {
         let entry = `**${r.path}**\n${r.summary}`;
         if (r.tagLine) entry += `\n${r.tagLine}`;
         return entry;
@@ -784,6 +799,29 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     return { content: [{ type: "text", text }] };
   }
 
+  async function handleUpdateFrontmatter(args) {
+    const filePath = resolvePath(args.path);
+    let content;
+    try {
+      content = await fs.readFile(filePath, "utf-8");
+    } catch (e) {
+      if (e.code === "ENOENT") {
+        throw new Error(`File not found: ${args.path}`, { cause: e });
+      }
+      throw e;
+    }
+    const { content: newContent, frontmatter } = updateFrontmatter(content, args.fields || {});
+    await fs.writeFile(filePath, newContent, "utf-8");
+
+    const lines = Object.entries(frontmatter).map(([k, v]) => {
+      const display = Array.isArray(v) ? `[${v.join(", ")}]` : String(v);
+      return `${k}: ${display}`;
+    });
+    return {
+      content: [{ type: "text", text: `Updated frontmatter in ${args.path}:\n${lines.join("\n")}` }]
+    };
+  }
+
   return new Map([
     ["vault_read", handleRead],
     ["vault_write", handleWrite],
@@ -802,5 +840,6 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     ["vault_peek", handlePeek],
     ["vault_trash", handleTrash],
     ["vault_move", handleMove],
+    ["vault_update_frontmatter", handleUpdateFrontmatter],
   ]);
 }

@@ -20,6 +20,8 @@ import {
   resolveFuzzyFolder,
   computePeek,
   formatPeek,
+  updateFrontmatter,
+  compareFrontmatterValues,
   AUTO_REDIRECT_THRESHOLD,
   FORCE_HARD_CAP,
   CHUNK_SIZE,
@@ -118,6 +120,35 @@ describe("matchesFilters", () => {
   it("handles null tags in metadata gracefully", () => {
     const noTags = { type: "research" };
     assert.equal(matchesFilters(noTags, { tags: ["dev"] }), false);
+  });
+
+  it("matches custom_fields with exact string value", () => {
+    const meta = { type: "task", status: "pending", priority: "high", tags: ["task"] };
+    assert.ok(matchesFilters(meta, { custom_fields: { priority: "high" } }));
+    assert.ok(!matchesFilters(meta, { custom_fields: { priority: "low" } }));
+  });
+
+  it("matches custom_fields with null (field missing or null)", () => {
+    const meta = { type: "task", status: "pending", tags: ["task"] };
+    assert.ok(matchesFilters(meta, { custom_fields: { due: null } }));
+    assert.ok(!matchesFilters(meta, { custom_fields: { status: null } }));
+  });
+
+  it("matches custom_fields with Date values in metadata", () => {
+    const meta = { type: "task", created: new Date("2026-02-10"), tags: ["task"] };
+    assert.ok(matchesFilters(meta, { custom_fields: { created: "2026-02-10" } }));
+  });
+
+  it("custom_fields composes with other filters", () => {
+    const meta = { type: "task", status: "pending", priority: "high", tags: ["task", "home"] };
+    assert.ok(matchesFilters(meta, { type: "task", custom_fields: { priority: "high" } }));
+    assert.ok(!matchesFilters(meta, { type: "task", custom_fields: { priority: "low" } }));
+  });
+
+  it("matches multiple custom_fields (all must match)", () => {
+    const meta = { type: "task", priority: "high", project: "Home", tags: ["task"] };
+    assert.ok(matchesFilters(meta, { custom_fields: { priority: "high", project: "Home" } }));
+    assert.ok(!matchesFilters(meta, { custom_fields: { priority: "high", project: "Work" } }));
   });
 });
 
@@ -265,6 +296,25 @@ describe("substituteTemplateVariables", () => {
       frontmatter: { "my-field_1": "new" },
     });
     assert.ok(result.includes("my-field_1: new"));
+  });
+
+  it("skips null frontmatter values (leaves template default)", () => {
+    const template = "---\ntype: task\nstatus: pending\npriority: normal\ndue: null\n---\n# Title\n";
+    const result = substituteTemplateVariables(template, {
+      title: "Test",
+      frontmatter: { status: "done", due: null }
+    });
+    assert.ok(result.includes("status: done"), "should update status");
+    assert.ok(result.includes("due: null"), "should leave due as template default");
+  });
+
+  it("skips undefined frontmatter values", () => {
+    const template = "---\ntype: task\nstatus: pending\n---\n# Title\n";
+    const result = substituteTemplateVariables(template, {
+      title: "Test",
+      frontmatter: { status: undefined }
+    });
+    assert.ok(result.includes("status: pending"), "should leave status as template default");
   });
 });
 
@@ -914,5 +964,151 @@ describe("formatPeek", () => {
     const data = { ...basePeekData, headings: [] };
     const text = formatPeek(data);
     assert.ok(text.includes("notes/big.md"));
+  });
+});
+
+describe("updateFrontmatter", () => {
+  it("updates an existing field", () => {
+    const content = "---\ntype: task\nstatus: pending\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n\nBody text.\n";
+    const { content: result, frontmatter } = updateFrontmatter(content, { status: "done" });
+    assert.equal(frontmatter.status, "done");
+    assert.ok(result.includes("Body text."), "body preserved");
+    assert.equal(frontmatter.type, "task", "other fields preserved");
+  });
+
+  it("creates a new field that does not exist", () => {
+    const content = "---\ntype: task\nstatus: pending\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    const { frontmatter } = updateFrontmatter(content, { completed: "2026-02-10" });
+    assert.equal(frontmatter.completed, "2026-02-10");
+    assert.equal(frontmatter.status, "pending", "existing fields preserved");
+  });
+
+  it("removes a field when value is null", () => {
+    const content = "---\ntype: task\nstatus: pending\npriority: high\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    const { content: result, frontmatter } = updateFrontmatter(content, { priority: null });
+    assert.equal(frontmatter.priority, undefined);
+    assert.ok(!result.includes("priority:"), "field removed from output");
+  });
+
+  it("protects required field: type cannot be set to null", () => {
+    const content = "---\ntype: task\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    assert.throws(() => updateFrontmatter(content, { type: null }), /cannot remove.*type/i);
+  });
+
+  it("protects required field: created cannot be set to null", () => {
+    const content = "---\ntype: task\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    assert.throws(() => updateFrontmatter(content, { created: null }), /cannot remove.*created/i);
+  });
+
+  it("protects required field: tags cannot be set to null", () => {
+    const content = "---\ntype: task\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    assert.throws(() => updateFrontmatter(content, { tags: null }), /cannot remove.*tags/i);
+  });
+
+  it("rejects empty tags array", () => {
+    const content = "---\ntype: task\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    assert.throws(() => updateFrontmatter(content, { tags: [] }), /tags.*non-empty/i);
+  });
+
+  it("replaces tags array wholesale", () => {
+    const content = "---\ntype: task\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    const { frontmatter } = updateFrontmatter(content, { tags: ["task", "grocery", "home"] });
+    assert.deepEqual(frontmatter.tags, ["task", "grocery", "home"]);
+  });
+
+  it("allows updating type to a new string value", () => {
+    const content = "---\ntype: task\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    const { frontmatter } = updateFrontmatter(content, { type: "project" });
+    assert.equal(frontmatter.type, "project");
+  });
+
+  it("throws on file with no frontmatter", () => {
+    const content = "# Title\n\nNo frontmatter here.\n";
+    assert.throws(() => updateFrontmatter(content, { status: "done" }), /no frontmatter/i);
+  });
+
+  it("throws on unclosed frontmatter", () => {
+    const content = "---\ntype: task\nstatus: pending\n# Title\nBody text\n";
+    assert.throws(() => updateFrontmatter(content, { status: "done" }), /unclosed/i);
+  });
+
+  it("throws descriptive error on malformed YAML", () => {
+    const content = "---\n: invalid: yaml: [broken\n---\n# Title\n";
+    assert.throws(() => updateFrontmatter(content, { status: "done" }), /failed to parse/i);
+  });
+
+  it("rejects invalid field keys", () => {
+    const content = "---\ntype: task\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    assert.throws(() => updateFrontmatter(content, { "bad key!": "value" }), /invalid.*key/i);
+  });
+
+  it("handles multiple updates in one call", () => {
+    const content = "---\ntype: task\nstatus: pending\npriority: normal\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
+    const { frontmatter } = updateFrontmatter(content, {
+      status: "done",
+      priority: null,
+      completed: "2026-02-10"
+    });
+    assert.equal(frontmatter.status, "done");
+    assert.equal(frontmatter.priority, undefined);
+    assert.equal(frontmatter.completed, "2026-02-10");
+  });
+
+  it("preserves body content exactly", () => {
+    const body = "\n# My Task\n\n## Description\n\nBuy groceries for dinner.\n\n## Context\n\nWe need food.\n";
+    const content = "---\ntype: task\ncreated: 2026-02-10\ntags:\n  - task\n---" + body;
+    const { content: result } = updateFrontmatter(content, { status: "done" });
+    assert.ok(result.endsWith(body), "body should be preserved exactly");
+  });
+});
+
+describe("compareFrontmatterValues", () => {
+  it("sorts priority with custom ranking (asc: low first)", () => {
+    assert.ok(compareFrontmatterValues("low", "high", "priority") < 0);
+    assert.ok(compareFrontmatterValues("urgent", "low", "priority") > 0);
+    assert.ok(compareFrontmatterValues("normal", "normal", "priority") === 0);
+  });
+
+  it("sorts priority desc (urgent first)", () => {
+    assert.ok(compareFrontmatterValues("urgent", "high", "priority") > 0);
+    assert.ok(compareFrontmatterValues("high", "normal", "priority") > 0);
+    assert.ok(compareFrontmatterValues("normal", "low", "priority") > 0);
+  });
+
+  it("sorts date-like values chronologically", () => {
+    assert.ok(compareFrontmatterValues("2026-01-01", "2026-02-01", "due") < 0);
+    assert.ok(compareFrontmatterValues("2026-12-31", "2026-01-01", "created") > 0);
+    assert.ok(compareFrontmatterValues("2026-05-15", "2026-05-15", "completed") === 0);
+  });
+
+  it("sorts string values with localeCompare", () => {
+    assert.ok(compareFrontmatterValues("alpha", "beta", "project") < 0);
+    assert.ok(compareFrontmatterValues("zebra", "alpha", "project") > 0);
+    assert.ok(compareFrontmatterValues("same", "same", "project") === 0);
+  });
+
+  it("null sorts last (positive) regardless of field", () => {
+    assert.ok(compareFrontmatterValues(null, "high", "priority") > 0);
+    assert.ok(compareFrontmatterValues("high", null, "priority") < 0);
+    assert.equal(compareFrontmatterValues(null, null, "priority"), 0);
+  });
+
+  it("undefined sorts last like null", () => {
+    assert.ok(compareFrontmatterValues(undefined, "2026-01-01", "due") > 0);
+    assert.ok(compareFrontmatterValues("2026-01-01", undefined, "due") < 0);
+  });
+
+  it("treats unknown priority values as strings", () => {
+    assert.ok(compareFrontmatterValues("critical", "zebra", "priority") < 0);
+  });
+
+  it("detects date values by pattern regardless of field name", () => {
+    assert.ok(compareFrontmatterValues("2026-01-01", "2026-02-01", "my_custom_date") < 0);
+  });
+
+  it("handles Date objects (converted to string)", () => {
+    const d1 = new Date("2026-01-01");
+    const d2 = new Date("2026-06-15");
+    assert.ok(compareFrontmatterValues(d1, d2, "created") < 0);
   });
 });

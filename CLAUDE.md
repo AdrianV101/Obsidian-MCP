@@ -29,19 +29,20 @@ npm run lint
 
 The project consists of three parts:
 
-**MCP Server**: A Node.js ES module server implementing the Model Context Protocol. The main entry point is `index.js` (tool definitions and request routing), with pure helper functions extracted to `helpers.js`. It provides 17 tools for vault interaction:
+**MCP Server**: A Node.js ES module server implementing the Model Context Protocol. The main entry point is `index.js` (tool definitions and request routing), with pure helper functions extracted to `helpers.js`. It provides 18 tools for vault interaction:
 - `vault_read` - Read note contents (supports pagination: `heading`, `tail`, `tail_sections`, `chunk`, `lines`; auto-redirects to peek data for files >80k chars; `force` bypasses redirect)
 - `vault_peek` - Inspect file metadata/structure without reading full content (size, frontmatter, heading outline, preview)
-- `vault_write` - Create new notes from templates (enforces frontmatter)
+- `vault_write` - Create new notes from templates (enforces frontmatter; settable fields: `status`, `priority`, `project`, `deciders`, `due`, `source`)
 - `vault_append` - Add content to existing files, with optional positional insert (after/before heading, end of section)
 - `vault_edit` - Surgical string replacement (exact match, single occurrence)
+- `vault_update_frontmatter` - Update YAML frontmatter fields atomically (set, create, remove fields)
 - `vault_search` - Full-text search across markdown files
 - `vault_semantic_search` - Semantic similarity search using OpenAI embeddings (requires `OPENAI_API_KEY`)
 - `vault_suggest_links` - Suggest relevant notes to link to based on content similarity (requires `OPENAI_API_KEY`)
 - `vault_list` / `vault_recent` - Directory listing and recent files
 - `vault_links` - Wikilink analysis (`[[...]]` syntax)
 - `vault_neighborhood` - Graph context exploration via BFS wikilink traversal
-- `vault_query` - Query notes by YAML frontmatter (type, status, tags, dates)
+- `vault_query` - Query notes by YAML frontmatter (type, status, tags, dates, `custom_fields` for arbitrary field matching, `sort_by`/`sort_order` for result ordering)
 - `vault_tags` - Discover all tags with per-note counts; supports folder scoping, glob patterns, inline `#tag` parsing
 - `vault_activity` - Query/clear activity log (all tool calls with timestamps and session IDs)
 - `vault_trash` - Soft-delete to `.trash/` (Obsidian convention), warns about broken incoming links
@@ -77,16 +78,22 @@ The semantic index is a regenerable cache — deleting `semantic-index.db` trigg
 Notes must be created from templates to ensure proper frontmatter. The tool:
 - Loads templates from `05-Templates/` at startup
 - Auto-substitutes `<% tp.date.now("YYYY-MM-DD") %>` and `<% tp.file.title %>`
-- Accepts `frontmatter` param for tags and other fields
+- Accepts `frontmatter` param for tags and other fields (`status`, `priority`, `project`, `deciders`, `due`, `source`)
 - Validates required fields: `type`, `created`, `tags`
 - Errors if file already exists (use `vault_edit` or `vault_append` to modify)
 
-Example:
+Examples:
 ```javascript
 vault_write({
   template: "adr",
   path: "01-Projects/MyApp/development/decisions/ADR-001-database.md",
   frontmatter: { tags: ["decision", "database"], deciders: "Team" }
+})
+
+vault_write({
+  template: "task",
+  path: "01-Projects/MyApp/planning/task-api-refactor.md",
+  frontmatter: { tags: ["task", "api"], priority: "high", project: "MyApp", due: "2026-03-01" }
 })
 ```
 
@@ -110,6 +117,44 @@ vault_activity({ action: "clear", before: "2026-01-01" })  // Clear old entries
 ```
 
 Implementation: `activity.js` (ActivityLog class)
+
+### vault_update_frontmatter (Atomic Frontmatter Updates)
+
+Safely updates YAML frontmatter fields in an existing note without touching the body content. Parses existing frontmatter, applies changes, and writes back.
+
+- Set fields to new values, add new fields, or remove fields by setting to `null`
+- Protected fields (`type`, `created`, `tags`) cannot be removed (only updated)
+- Arrays (like `tags`) are replaced wholesale
+- Requires exact path (no fuzzy resolution — destructive operation)
+
+```javascript
+vault_update_frontmatter({
+  path: "01-Projects/MyApp/planning/task-api-refactor.md",
+  fields: { status: "in-progress", priority: "urgent" }
+})
+
+// Remove a field by setting to null
+vault_update_frontmatter({
+  path: "01-Projects/MyApp/planning/task-api-refactor.md",
+  fields: { due: null }  // removes the due field
+})
+```
+
+Implementation: `updateFrontmatter` pure function in `helpers.js`, handler in `handlers.js`
+
+### vault_query (Enhanced Filtering and Sorting)
+
+In addition to the standard filters (type, status, tags, dates, folder), `vault_query` supports:
+
+- `custom_fields` — filter by arbitrary frontmatter fields (exact match); use `null` to match notes where a field is missing
+- `sort_by` — sort results by any frontmatter field; smart ordering for priority (`urgent > high > normal > low`), chronological for dates, alphabetical otherwise; nulls sort last
+- `sort_order` — `"asc"` (default) or `"desc"`
+
+```javascript
+vault_query({ type: "task", custom_fields: { priority: "high" }, sort_by: "due" })
+vault_query({ tags: ["task"], sort_by: "priority", sort_order: "asc" })
+vault_query({ custom_fields: { project: "MyApp", due: null } })  // tasks with no due date
+```
 
 ### Fuzzy Path Resolution
 
@@ -141,6 +186,7 @@ Implementation: `helpers.js` (`buildBasenameMap`, `resolveFuzzyPath`, `resolveFu
 - `meeting-notes.md` - Meeting records
 - `moc.md` - Maps of Content (index/hub notes)
 - `daily-note.md` - Daily notes
+- `task.md` - Structured task notes with status, priority, due date, project, and source fields
 
 **Sample CLAUDE.md** (`sample-project/CLAUDE.md`): Template for code repositories to specify PKM integration paths, context loading, and documentation rules.
 
@@ -204,6 +250,6 @@ status: <status>    # If applicable for the type
 ---
 ```
 
-Common types: `fleeting`, `research`, `adr`, `bug`, `planning`, `transcript`, `permanent`
+Common types: `fleeting`, `research`, `adr`, `bug`, `planning`, `transcript`, `permanent`, `task`
 
 **Never create notes without frontmatter** — even quick research docs or ad-hoc files.

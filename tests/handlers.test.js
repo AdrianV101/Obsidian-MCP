@@ -38,6 +38,30 @@ deciders:
 <!-- What -->
 `;
 
+const TASK_TEMPLATE = `---
+type: task
+created: <% tp.date.now("YYYY-MM-DD") %>
+status: pending
+priority: normal
+due: null
+project: null
+source: null
+tags:
+  - task
+---
+
+# <% tp.file.title %>
+
+## Description
+
+
+## Context
+
+
+## Acceptance Criteria
+
+`;
+
 before(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "handlers-test-"));
 
@@ -46,6 +70,7 @@ before(async () => {
   await fs.mkdir(templateDir, { recursive: true });
   await fs.writeFile(path.join(templateDir, "research-note.md"), TEMPLATE_CONTENT);
   await fs.writeFile(path.join(templateDir, "adr.md"), ADR_TEMPLATE);
+  await fs.writeFile(path.join(templateDir, "task.md"), TASK_TEMPLATE);
 
   // Create some test notes
   const notesDir = path.join(tmpDir, "notes");
@@ -210,6 +235,47 @@ No other file links here.
   const headinglessLines = Array.from({ length: 5000 }, (_, i) => `Line ${i + 1}: ${"data ".repeat(20)}`);
   const headinglessContent = "---\ntype: dump\ncreated: 2026-01-01\ntags:\n  - test\n---\n" + headinglessLines.join("\n") + "\n";
   await fs.writeFile(path.join(notesDir, "headingless-large.md"), headinglessContent);
+
+  // ── Task notes for query sort/filter testing ──
+  const tasksDir = path.join(tmpDir, "tasks");
+  await fs.mkdir(tasksDir, { recursive: true });
+
+  await fs.writeFile(path.join(tasksDir, "task-a.md"), `---
+type: task
+status: pending
+priority: high
+due: "2026-03-01"
+project: Supergrant
+created: 2026-02-08
+tags:
+  - task
+---
+# Task A
+`);
+
+  await fs.writeFile(path.join(tasksDir, "task-b.md"), `---
+type: task
+status: done
+priority: low
+due: "2026-02-15"
+project: Home
+created: 2026-02-09
+tags:
+  - task
+---
+# Task B
+`);
+
+  await fs.writeFile(path.join(tasksDir, "task-c.md"), `---
+type: task
+status: pending
+priority: urgent
+created: 2026-02-10
+tags:
+  - task
+---
+# Task C - no due date
+`);
 
   // Build template registry (mimicking what index.js does)
   const templateRegistry = new Map();
@@ -712,6 +778,27 @@ describe("handleWrite", () => {
     assert.ok(content.includes("custom-tag"));
     assert.ok(content.includes("The Team"));
   });
+
+  it("creates a task note with custom frontmatter fields", async () => {
+    const result = await handlers.get("vault_write")({
+      template: "task",
+      path: "tasks/buy-groceries.md",
+      frontmatter: {
+        tags: ["task", "grocery"],
+        status: "pending",
+        priority: "high",
+        project: "Home",
+        source: "telegram",
+      }
+    });
+    const content = await fs.readFile(path.join(tmpDir, "tasks/buy-groceries.md"), "utf-8");
+    assert.ok(content.includes("type: task"));
+    assert.ok(content.includes("priority: high"));
+    assert.ok(content.includes("project: Home"));
+    assert.ok(content.includes("source: telegram"));
+    assert.ok(content.includes("## Description"));
+    assert.ok(result.content[0].text.includes("task"));
+  });
 });
 
 // ─── vault_append ──────────────────────────────────────────────────────
@@ -1063,6 +1150,77 @@ describe("handleQuery", () => {
     const text = result.content[0].text;
     assert.ok(text.includes("1 note"));
   });
+
+  it("filters by custom_fields", async () => {
+    const result = await handlers.get("vault_query")({
+      type: "task",
+      custom_fields: { priority: "high" },
+      folder: "tasks"
+    });
+    assert.ok(result.content[0].text.includes("task-a.md"));
+    assert.ok(!result.content[0].text.includes("task-b.md"));
+    assert.ok(!result.content[0].text.includes("task-c.md"));
+  });
+
+  it("sorts by priority descending (urgent first)", async () => {
+    const result = await handlers.get("vault_query")({
+      type: "task",
+      folder: "tasks",
+      sort_by: "priority",
+      sort_order: "desc"
+    });
+    const text = result.content[0].text;
+    const posUrgent = text.indexOf("task-c");
+    const posHigh = text.indexOf("task-a");
+    const posLow = text.indexOf("task-b");
+    assert.ok(posUrgent < posHigh, "urgent should come before high");
+    assert.ok(posHigh < posLow, "high should come before low");
+  });
+
+  it("sorts by due date ascending (nulls last)", async () => {
+    const result = await handlers.get("vault_query")({
+      type: "task",
+      folder: "tasks",
+      sort_by: "due",
+      sort_order: "asc"
+    });
+    const text = result.content[0].text;
+    const posB = text.indexOf("task-b");
+    const posA = text.indexOf("task-a");
+    const posC = text.indexOf("task-c");
+    assert.ok(posB < posA, "earlier due date first");
+    assert.ok(posA < posC, "null due date last");
+  });
+
+  it("sort_by defaults to ascending", async () => {
+    const result = await handlers.get("vault_query")({
+      type: "task",
+      folder: "tasks",
+      sort_by: "created"
+    });
+    const text = result.content[0].text;
+    const posA = text.indexOf("task-a");
+    const posB = text.indexOf("task-b");
+    const posC = text.indexOf("task-c");
+    assert.ok(posA < posB, "earliest created first");
+    assert.ok(posB < posC, "latest created last");
+  });
+
+  it("applies limit after sorting (not before)", async () => {
+    const result = await handlers.get("vault_query")({
+      type: "task",
+      folder: "tasks",
+      sort_by: "priority",
+      sort_order: "desc",
+      limit: 2
+    });
+    const text = result.content[0].text;
+    // Key invariant: limit is applied AFTER sorting, so the highest-priority
+    // task (urgent) must appear, and the lowest-priority (low) must not.
+    assert.ok(text.includes("task-c"), "urgent task must be in top 2");
+    assert.ok(!text.includes("task-b"), "low task must be excluded by limit");
+    assert.ok(text.includes("2 note"), "should report exactly 2 results");
+  });
 });
 
 // ─── vault_tags ────────────────────────────────────────────────────────
@@ -1328,6 +1486,7 @@ describe("createHandlers", () => {
       "vault_neighborhood", "vault_query", "vault_tags",
       "vault_activity", "vault_semantic_search", "vault_suggest_links",
       "vault_peek", "vault_trash", "vault_move",
+      "vault_update_frontmatter",
     ];
     for (const tool of expectedTools) {
       assert.ok(handlers.has(tool), `Missing handler: ${tool}`);
@@ -1335,8 +1494,8 @@ describe("createHandlers", () => {
     }
   });
 
-  it("returns exactly 17 handlers", () => {
-    assert.equal(handlers.size, 17);
+  it("returns exactly 18 handlers", () => {
+    assert.equal(handlers.size, 18);
   });
 });
 
@@ -1612,5 +1771,82 @@ describe("handleMove", () => {
     const refContent = await fs.readFile(path.join(srcDir, "fp-ref.md"), "utf-8");
     assert.ok(refContent.includes("[[fp-dest]]"), `Expected [[fp-dest]] but got: ${refContent}`);
     assert.ok(!refContent.includes("[[move-fullpath/fp-source]]"));
+  });
+});
+
+// ─── vault_update_frontmatter ─────────────────────────────────────────
+
+describe("handleUpdateFrontmatter", () => {
+  it("updates frontmatter fields in an existing note", async () => {
+    await handlers.get("vault_write")({
+      template: "task",
+      path: "tasks/fm-update-test.md",
+      frontmatter: { tags: ["task"] }
+    });
+    const result = await handlers.get("vault_update_frontmatter")({
+      path: "tasks/fm-update-test.md",
+      fields: { status: "done", completed: "2026-02-10" }
+    });
+    assert.ok(result.content[0].text.includes("status: done"));
+    assert.ok(result.content[0].text.includes("completed: 2026-02-10"));
+
+    const content = await fs.readFile(path.join(tmpDir, "tasks/fm-update-test.md"), "utf-8");
+    assert.ok(content.includes("status: done"));
+    assert.ok(content.includes("completed:") && content.includes("2026-02-10"), "completed field present");
+    assert.ok(content.includes("## Description"), "body preserved");
+  });
+
+  it("removes a field when set to null", async () => {
+    await handlers.get("vault_write")({
+      template: "task",
+      path: "tasks/fm-remove-test.md",
+      frontmatter: { tags: ["task"], priority: "high" }
+    });
+    await handlers.get("vault_update_frontmatter")({
+      path: "tasks/fm-remove-test.md",
+      fields: { priority: null }
+    });
+    const content = await fs.readFile(path.join(tmpDir, "tasks/fm-remove-test.md"), "utf-8");
+    assert.ok(!content.includes("priority:"), "priority field removed");
+  });
+
+  it("rejects deletion of protected fields", async () => {
+    await handlers.get("vault_write")({
+      template: "task",
+      path: "tasks/fm-protect-test.md",
+      frontmatter: { tags: ["task"] }
+    });
+    await assert.rejects(
+      () => handlers.get("vault_update_frontmatter")({
+        path: "tasks/fm-protect-test.md",
+        fields: { type: null }
+      }),
+      /cannot remove/i
+    );
+  });
+
+  it("errors on non-existent file without leaking absolute path", async () => {
+    try {
+      await handlers.get("vault_update_frontmatter")({
+        path: "tasks/no-such-file.md",
+        fields: { status: "done" }
+      });
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.ok(e.message.includes("File not found"), "should have clear error message");
+      assert.ok(e.message.includes("tasks/no-such-file.md"), "should include relative path");
+      assert.ok(!e.message.includes(tmpDir), "should not leak absolute vault path");
+    }
+  });
+
+  it("errors on file without frontmatter", async () => {
+    await fs.writeFile(path.join(tmpDir, "no-fm.md"), "# No Frontmatter\n\nJust body.\n");
+    await assert.rejects(
+      () => handlers.get("vault_update_frontmatter")({
+        path: "no-fm.md",
+        fields: { status: "done" }
+      }),
+      /no frontmatter/i
+    );
   });
 });

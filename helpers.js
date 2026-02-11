@@ -1,11 +1,53 @@
 import fs from "fs/promises";
 import path from "path";
+import yaml from "js-yaml";
 import { extractFrontmatter } from "./utils.js";
 
 // Large-file thresholds (character counts, ~4 chars per token)
 export const AUTO_REDIRECT_THRESHOLD = 80_000;  // ~20k tokens
 export const FORCE_HARD_CAP = 400_000;           // ~100k tokens
 export const CHUNK_SIZE = 80_000;                 // chars per chunk
+
+const PRIORITY_RANKS = { urgent: 3, high: 2, normal: 1, low: 0 };
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Compare two frontmatter values for sorting.
+ * Smart ordering: priority uses custom ranks, dates sort chronologically, strings use localeCompare.
+ * null/undefined always sort last.
+ *
+ * @param {*} a - first value
+ * @param {*} b - second value
+ * @param {string} field - frontmatter field name (used for priority detection)
+ * @returns {number} negative if a < b, positive if a > b, 0 if equal
+ */
+export function compareFrontmatterValues(a, b, field) {
+  // Normalize Date objects to YYYY-MM-DD strings
+  if (a instanceof Date) a = a.toISOString().split("T")[0];
+  if (b instanceof Date) b = b.toISOString().split("T")[0];
+
+  const aNull = a === null || a === undefined;
+  const bNull = b === null || b === undefined;
+  if (aNull && bNull) return 0;
+  if (aNull) return 1;
+  if (bNull) return -1;
+
+  const aStr = String(a);
+  const bStr = String(b);
+
+  // Priority field with known values
+  if (field === "priority" && aStr in PRIORITY_RANKS && bStr in PRIORITY_RANKS) {
+    return PRIORITY_RANKS[aStr] - PRIORITY_RANKS[bStr];
+  }
+
+  // Date-like values (YYYY-MM-DD pattern)
+  if (DATE_PATTERN.test(aStr) && DATE_PATTERN.test(bStr)) {
+    return aStr < bStr ? -1 : aStr > bStr ? 1 : 0;
+  }
+
+  // String comparison
+  return aStr.localeCompare(bStr);
+}
 
 /**
  * Resolve a relative path against the vault root with directory traversal protection.
@@ -72,6 +114,20 @@ export function matchesFilters(metadata, filters) {
   }
   if (filters.created_before && createdStr > filters.created_before) {
     return false;
+  }
+
+  if (filters.custom_fields) {
+    for (const [key, value] of Object.entries(filters.custom_fields)) {
+      let metaValue = metadata[key];
+      if (metaValue instanceof Date) {
+        metaValue = metaValue.toISOString().split("T")[0];
+      }
+      if (value === null) {
+        if (metaValue !== undefined && metaValue !== null) return false;
+      } else {
+        if (String(metaValue ?? "") !== String(value)) return false;
+      }
+    }
   }
 
   return true;
@@ -729,4 +785,64 @@ export function formatPeek(peekData, { redirected = false } = {}) {
   }
 
   return parts.join("\n");
+}
+
+/**
+ * Update YAML frontmatter fields in a markdown file's content.
+ * Parses existing frontmatter, merges changes, re-serializes.
+ *
+ * @param {string} content - full file content with frontmatter
+ * @param {Object} fields - fields to update (null value = delete, non-null = set/create)
+ * @returns {{ content: string, frontmatter: Object }} updated content and resulting frontmatter
+ * @throws {Error} if no frontmatter, protected field deletion, invalid key, or empty tags
+ */
+export function updateFrontmatter(content, fields) {
+  if (!content.startsWith("---")) {
+    throw new Error("No frontmatter found in file");
+  }
+  const endIndex = content.indexOf("\n---", 3);
+  if (endIndex === -1) {
+    throw new Error("No frontmatter found in file (unclosed)");
+  }
+
+  const yamlStr = content.slice(4, endIndex);
+  const body = content.slice(endIndex + 4);
+
+  let parsed;
+  try {
+    parsed = yaml.load(yamlStr, { schema: yaml.JSON_SCHEMA });
+  } catch (e) {
+    throw new Error(`Failed to parse frontmatter: ${e.message}`, { cause: e });
+  }
+  if (!parsed || typeof parsed !== "object") {
+    parsed = {};
+  }
+
+  const PROTECTED_FIELDS = ["type", "created", "tags"];
+  const KEY_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
+
+  for (const [key, value] of Object.entries(fields)) {
+    if (!KEY_REGEX.test(key)) {
+      throw new Error(`Invalid frontmatter key: "${key}". Keys must start with a letter and contain only letters, digits, hyphens, or underscores.`);
+    }
+
+    if (value === null) {
+      if (PROTECTED_FIELDS.includes(key)) {
+        throw new Error(`Cannot remove required field: "${key}". Protected fields: ${PROTECTED_FIELDS.join(", ")}`);
+      }
+      delete parsed[key];
+    } else {
+      if (key === "tags") {
+        if (!Array.isArray(value) || value.filter(Boolean).length === 0) {
+          throw new Error("tags must be a non-empty array");
+        }
+      }
+      parsed[key] = value;
+    }
+  }
+
+  const newYaml = yaml.dump(parsed, { lineWidth: -1, noRefs: true, sortKeys: false, schema: yaml.JSON_SCHEMA });
+  const newContent = "---\n" + newYaml + "---" + body;
+
+  return { content: newContent, frontmatter: { ...parsed } };
 }

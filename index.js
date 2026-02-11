@@ -92,7 +92,7 @@ Built-in variables (auto-substituted):
 - <% tp.file.title %> - Derived from output path filename
 
 Required: frontmatter.tags - provide at least one tag for the note.
-Optional: frontmatter.status, frontmatter.project, frontmatter.deciders (depending on template type).
+Optional: frontmatter.status, frontmatter.priority, frontmatter.project, frontmatter.deciders, frontmatter.due, frontmatter.source (depending on template type).
 Pass custom <%...%> variables via the 'variables' parameter.`,
       inputSchema: {
         type: "object",
@@ -114,8 +114,11 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
             properties: {
               tags: { type: "array", items: { type: "string" }, description: "Tags for the note (required)" },
               status: { type: "string", description: "Note status" },
+              priority: { type: "string", description: "Priority level (for tasks)" },
               project: { type: "string", description: "Project name (for devlogs)" },
-              deciders: { type: "string", description: "Decision makers (for ADRs)" }
+              deciders: { type: "string", description: "Decision makers (for ADRs)" },
+              due: { type: "string", description: "Due date (for tasks)" },
+              source: { type: "string", description: "Source reference (for tasks)" }
             }
           },
           createDirs: { type: "boolean", description: "Create parent directories if they don't exist", default: true }
@@ -148,6 +151,22 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
           new_string: { type: "string", description: "Replacement string" }
         },
         required: ["path", "old_string", "new_string"]
+      }
+    },
+    {
+      name: "vault_update_frontmatter",
+      description: "Update YAML frontmatter fields in an existing note. Parses existing frontmatter, updates specified fields, preserves everything else. Set a field to null to remove it. Protected fields (type, created, tags) cannot be removed.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Path relative to vault root (exact path required)" },
+          fields: {
+            type: "object",
+            description: "Fields to update. Set value to null to remove a field. Arrays (like tags) are replaced wholesale.",
+            additionalProperties: true
+          }
+        },
+        required: ["path", "fields"]
       }
     },
     {
@@ -229,7 +248,22 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
           created_after: { type: "string", description: "Notes created on or after this date (YYYY-MM-DD)" },
           created_before: { type: "string", description: "Notes created on or before this date (YYYY-MM-DD)" },
           folder: { type: "string", description: "Limit search to this folder" },
-          limit: { type: "number", description: "Max results to return", default: 50 }
+          limit: { type: "number", description: "Max results to return", default: 50 },
+          custom_fields: {
+            type: "object",
+            description: "Filter by arbitrary frontmatter fields (exact match). Use null to match missing fields.",
+            additionalProperties: true
+          },
+          sort_by: {
+            type: "string",
+            description: "Sort results by this frontmatter field. Smart ordering: priority uses rank (urgent>high>normal>low), dates sort chronologically, others alphabetically. Nulls sort last."
+          },
+          sort_order: {
+            type: "string",
+            enum: ["asc", "desc"],
+            description: "Sort direction (default: asc)",
+            default: "asc"
+          },
         }
       }
     },
