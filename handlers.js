@@ -241,6 +241,8 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
         const after = existing.slice(range.sectionEnd);
         const separator = before.length > 0 && !before.endsWith("\n") ? "\n" : "";
         newContent = before + separator + args.content + "\n" + after;
+      } else {
+        throw new Error(`Unknown position: ${args.position}`);
       }
     } else if (args.heading) {
       const range = findSectionRange(existing, args.heading);
@@ -367,7 +369,6 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     const resolvedVaultRelative = resolveFuzzyPath(args.path, basenameMap, allFilesSet);
     const filePath = resolvePath(resolvedVaultRelative);
     const content = await fs.readFile(filePath, "utf-8");
-    const fileName = path.basename(resolvedVaultRelative, ".md");
 
     const result = { outgoing: [], incoming: [] };
 
@@ -380,14 +381,9 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     }
 
     if (args.direction !== "outgoing") {
-      const allFiles = await getAllMarkdownFiles(vaultPath);
-      for (const file of allFiles) {
-        if (file === resolvedVaultRelative) continue;
-        const fileContent = await fs.readFile(path.join(vaultPath, file), "utf-8");
-        if (fileContent.includes(`[[${fileName}]]`) || fileContent.includes(`[[${fileName}|`)) {
-          result.incoming.push(file);
-        }
-      }
+      const allFilesList = Array.from(allFilesSet);
+      const linkingFiles = await findFilesLinkingTo(resolvedVaultRelative, vaultPath, allFilesList, basenameMap, allFilesSet);
+      result.incoming = linkingFiles.map(({ file }) => file);
     }
 
     let output = "";
@@ -620,8 +616,8 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
 
     let body = inputText;
     if (body.startsWith("---")) {
-      const endIdx = body.indexOf("---", 3);
-      if (endIdx !== -1) body = body.slice(endIdx + 3).trim();
+      const endIdx = body.indexOf("\n---", 3);
+      if (endIdx !== -1) body = body.slice(endIdx + 4).trim();
     }
     if (!body) throw new Error("No content to analyze");
 

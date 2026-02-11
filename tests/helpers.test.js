@@ -316,6 +316,19 @@ describe("substituteTemplateVariables", () => {
     });
     assert.ok(result.includes("status: pending"), "should leave status as template default");
   });
+
+  it("correctly splits frontmatter from body when --- appears mid-line in frontmatter value", () => {
+    // Template with --- mid-line in frontmatter value should properly separate frontmatter from body
+    const template = "---\ntype: task\nstatus: pending\ndescription: This --- is mid-line\n---\n# <% tp.file.title %>\n\nBody text.";
+    const result = substituteTemplateVariables(template, {
+      title: "Test Task",
+      frontmatter: { status: "done" }
+    });
+    assert.ok(result.includes("# Test Task"), "title should be substituted");
+    assert.ok(result.includes("status: done"), "frontmatter should be updated");
+    assert.ok(result.includes("Body text."), "body should be preserved");
+    assert.ok(!result.includes("<% tp.file.title %>"), "template variable should be replaced");
+  });
 });
 
 describe("validateFrontmatterStrict", () => {
@@ -416,6 +429,14 @@ describe("extractInlineTags", () => {
     const content = "---\ntype: note\n---\n\nColor is &#123; and &amp;";
     const tags = extractInlineTags(content);
     assert.equal(tags.length, 0);
+  });
+
+  it("does not extract tags from frontmatter with --- mid-line in value", () => {
+    // Frontmatter with --- mid-line should be properly excluded from inline tag extraction
+    const content = "---\ntype: note\ntags:\n  - frontmatter-tag\ndescription: This --- has #fake-tag\n---\n\n#real-tag in body";
+    const tags = extractInlineTags(content);
+    assert.deepEqual(tags, ["real-tag"]);
+    assert.ok(!tags.includes("fake-tag"), "tags inside frontmatter values should be ignored");
   });
 });
 

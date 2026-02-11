@@ -74,4 +74,19 @@ describe("extractFrontmatter", () => {
       assert.ok(typeof fm.fn !== "function", "!!js/function should not create a function");
     }
   });
+
+  it("ignores --- appearing mid-line in body text", () => {
+    // "---" mid-line should NOT close frontmatter; only "\n---" on its own line should
+    const content = "---\ntype: research\ntags:\n  - test\n---\n\nSome text --- more text\n";
+    const fm = extractFrontmatter(content);
+    assert.equal(fm.type, "research");
+    assert.deepEqual(fm.tags, ["test"]);
+  });
+
+  it("returns null when --- appears mid-line but no real closing boundary", () => {
+    // The only "---" after the opener is mid-line, so there is no valid closing boundary
+    const content = "---\ntype: research\nvalue: text --- more\n";
+    const fm = extractFrontmatter(content);
+    assert.equal(fm, null);
+  });
 });
