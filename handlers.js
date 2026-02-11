@@ -263,7 +263,15 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
 
   async function handleEdit(args) {
     const filePath = resolvePath(args.path);
-    const content = await fs.readFile(filePath, "utf-8");
+    let content;
+    try {
+      content = await fs.readFile(filePath, "utf-8");
+    } catch (e) {
+      if (e.code === "ENOENT") {
+        throw new Error(`File not found: ${args.path}`, { cause: e });
+      }
+      throw e;
+    }
     const count = countOccurrences(content, args.old_string);
 
     if (count === 0) {

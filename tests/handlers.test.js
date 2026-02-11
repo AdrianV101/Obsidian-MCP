@@ -958,6 +958,18 @@ describe("handleEdit", () => {
     assert.equal(result.isError, true);
     assert.ok(result.content[0].text.includes("3 matches"));
   });
+
+  it("throws descriptive error for nonexistent file without leaking absolute path", async () => {
+    const handler = handlers.get("vault_edit");
+    await assert.rejects(
+      () => handler({ path: "no-such-file.md", old_string: "a", new_string: "b" }),
+      (err) => {
+        assert.ok(err.message.includes("File not found: no-such-file.md"));
+        assert.ok(!err.message.includes(tmpDir));
+        return true;
+      }
+    );
+  });
 });
 
 // ─── vault_search ──────────────────────────────────────────────────────
