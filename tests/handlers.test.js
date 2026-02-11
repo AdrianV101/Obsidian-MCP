@@ -62,6 +62,21 @@ tags:
 
 `;
 
+/**
+ * Helper to build a template registry from the given tmpDir.
+ * Mimics what index.js does at startup.
+ */
+async function buildTemplateRegistry(tmpDir) {
+  const templateRegistry = new Map();
+  const tdir = path.join(tmpDir, "05-Templates");
+  for (const file of await fs.readdir(tdir)) {
+    const name = path.basename(file, ".md");
+    const content = await fs.readFile(path.join(tdir, file), "utf-8");
+    templateRegistry.set(name, { content, description: name });
+  }
+  return templateRegistry;
+}
+
 before(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "handlers-test-"));
 
@@ -278,13 +293,7 @@ tags:
 `);
 
   // Build template registry (mimicking what index.js does)
-  const templateRegistry = new Map();
-  const templateFiles = await fs.readdir(templateDir);
-  for (const file of templateFiles) {
-    const name = path.basename(file, ".md");
-    const content = await fs.readFile(path.join(templateDir, file), "utf-8");
-    templateRegistry.set(name, { content, description: name });
-  }
+  const templateRegistry = await buildTemplateRegistry(tmpDir);
 
   handlers = await createHandlers({
     vaultPath: tmpDir,
@@ -1122,13 +1131,7 @@ References [[link-test/link-target]] using a folder-prefixed wikilink.
 `);
 
     // Rebuild handlers to pick up the new files
-    const templateRegistry = new Map();
-    const tdir = path.join(tmpDir, "05-Templates");
-    for (const file of await fs.readdir(tdir)) {
-      const name = path.basename(file, ".md");
-      const content = await fs.readFile(path.join(tdir, file), "utf-8");
-      templateRegistry.set(name, { content, description: name });
-    }
+    const templateRegistry = await buildTemplateRegistry(tmpDir);
     const freshHandlers = await createHandlers({
       vaultPath: tmpDir,
       templateRegistry,
@@ -1377,6 +1380,52 @@ describe("handleSemanticSearch", () => {
     const handler = handlers.get("vault_semantic_search");
     await assert.rejects(() => handler({ query: "test" }), /not available/);
   });
+
+  it("returns search results from semantic index (happy path)", async () => {
+    const mockIndex = {
+      isAvailable: true,
+      async search() {
+        return `Found 2 semantically related notes:\n\n**notes/alpha.md** (score: 0.85)\nAlpha content\n\n**notes/beta.md** (score: 0.72)\nBeta content`;
+      },
+    };
+    const mockHandlers = await createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry: new Map(),
+      semanticIndex: mockIndex,
+      activityLog: null,
+      sessionId: "test-semantic-happy",
+    });
+    const handler = mockHandlers.get("vault_semantic_search");
+    const result = await handler({ query: "machine learning", limit: 5 });
+    assert.equal(result.content[0].type, "text");
+    assert.ok(result.content[0].text.includes("alpha.md"));
+    assert.ok(result.content[0].text.includes("beta.md"));
+    assert.ok(result.content[0].text.includes("score: 0.85"));
+  });
+
+  it("passes all args through to semantic index", async () => {
+    let capturedArgs;
+    const mockIndex = {
+      isAvailable: true,
+      async search(args) {
+        capturedArgs = args;
+        return "No semantically related notes found.";
+      },
+    };
+    const mockHandlers = await createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry: new Map(),
+      semanticIndex: mockIndex,
+      activityLog: null,
+      sessionId: "test-semantic-args",
+    });
+    const handler = mockHandlers.get("vault_semantic_search");
+    await handler({ query: "test query", limit: 3, folder: "notes", threshold: 0.5 });
+    assert.equal(capturedArgs.query, "test query");
+    assert.equal(capturedArgs.limit, 3);
+    assert.equal(capturedArgs.folder, "notes");
+    assert.equal(capturedArgs.threshold, 0.5);
+  });
 });
 
 // ─── vault_suggest_links ───────────────────────────────────────────────
@@ -1398,6 +1447,113 @@ describe("handleSuggestLinks", () => {
     });
     const handler = mockHandlers.get("vault_suggest_links");
     await assert.rejects(() => handler({}), /Either.*content.*path/);
+  });
+
+  it("returns link suggestions from content arg (happy path)", async () => {
+    const mockIndex = {
+      isAvailable: true,
+      async searchRaw() {
+        return [
+          { path: "notes/gamma.md", score: 0.88, preview: "Gamma note about knowledge" },
+          { path: "notes/beta.md", score: 0.72, preview: "Beta note about architecture" },
+        ];
+      },
+    };
+    const templateRegistry = await buildTemplateRegistry(tmpDir);
+    const mockHandlers = await createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry,
+      semanticIndex: mockIndex,
+      activityLog: null,
+      sessionId: "test-suggest-content",
+    });
+
+    const handler = mockHandlers.get("vault_suggest_links");
+    const result = await handler({
+      content: "Some text about project management and decisions.",
+    });
+    const text = result.content[0].text;
+    assert.ok(text.includes("link suggestion"), `Expected suggestions header but got: ${text}`);
+    assert.ok(text.includes("gamma.md"));
+    assert.ok(text.includes("beta.md"));
+    assert.ok(text.includes("score: 0.88"));
+  });
+
+  it("filters out already-linked notes from suggestions", async () => {
+    const mockIndex = {
+      isAvailable: true,
+      async searchRaw() {
+        return [
+          { path: "notes/gamma.md", score: 0.88, preview: "Gamma note" },
+          { path: "notes/beta.md", score: 0.72, preview: "Beta note" },
+        ];
+      },
+    };
+    const templateRegistry = await buildTemplateRegistry(tmpDir);
+    const mockHandlers = await createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry,
+      semanticIndex: mockIndex,
+      activityLog: null,
+      sessionId: "test-suggest-filter",
+    });
+
+    const handler = mockHandlers.get("vault_suggest_links");
+    // Content already links to [[beta]]
+    const result = await handler({
+      content: "Some text that links to [[beta]] already.",
+    });
+    const text = result.content[0].text;
+    // beta should be filtered out because it's already linked
+    assert.ok(text.includes("gamma.md"), "gamma should appear");
+    assert.ok(!text.includes("beta.md"), "beta should be filtered (already linked)");
+  });
+
+  it("reads file when path arg is provided instead of content", async () => {
+    const mockIndex = {
+      isAvailable: true,
+      async searchRaw() {
+        return [
+          { path: "notes/beta.md", score: 0.80, preview: "Beta note about architecture" },
+        ];
+      },
+    };
+    const templateRegistry = await buildTemplateRegistry(tmpDir);
+    const mockHandlers = await createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry,
+      semanticIndex: mockIndex,
+      activityLog: null,
+      sessionId: "test-suggest-path",
+    });
+
+    const handler = mockHandlers.get("vault_suggest_links");
+    // Use path arg - handler should read the file at notes/gamma.md
+    const result = await handler({ path: "notes/gamma.md" });
+    const text = result.content[0].text;
+    assert.ok(text.includes("link suggestion"), `Expected suggestions but got: ${text}`);
+    assert.ok(text.includes("beta.md"));
+  });
+
+  it("returns 'no suggestions' when searchRaw returns empty", async () => {
+    const mockIndex = {
+      isAvailable: true,
+      async searchRaw() {
+        return [];
+      },
+    };
+    const templateRegistry = await buildTemplateRegistry(tmpDir);
+    const mockHandlers = await createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry,
+      semanticIndex: mockIndex,
+      activityLog: null,
+      sessionId: "test-suggest-empty",
+    });
+
+    const handler = mockHandlers.get("vault_suggest_links");
+    const result = await handler({ content: "Some text." });
+    assert.ok(result.content[0].text.includes("No link suggestions found"));
   });
 });
 
@@ -1566,13 +1722,7 @@ describe("handleTrash", () => {
     await fs.writeFile(filePath, "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# To Trash\n");
 
     // Rebuild handlers to pick up the new file
-    const templateRegistry = new Map();
-    const tdir = path.join(tmpDir, "05-Templates");
-    for (const file of await fs.readdir(tdir)) {
-      const name = path.basename(file, ".md");
-      const content = await fs.readFile(path.join(tdir, file), "utf-8");
-      templateRegistry.set(name, { content, description: name });
-    }
+    const templateRegistry = await buildTemplateRegistry(tmpDir);
     const freshHandlers = await createHandlers({
       vaultPath: tmpDir,
       templateRegistry,
@@ -1605,13 +1755,7 @@ describe("handleTrash", () => {
     await fs.writeFile(path.join(trashDir2, "will-die.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Will Die\n");
     await fs.writeFile(path.join(trashDir2, "refers.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# Refers\nSee [[will-die]].\n");
 
-    const templateRegistry = new Map();
-    const tdir = path.join(tmpDir, "05-Templates");
-    for (const file of await fs.readdir(tdir)) {
-      const name = path.basename(file, ".md");
-      const content = await fs.readFile(path.join(tdir, file), "utf-8");
-      templateRegistry.set(name, { content, description: name });
-    }
+    const templateRegistry = await buildTemplateRegistry(tmpDir);
     const freshHandlers = await createHandlers({
       vaultPath: tmpDir,
       templateRegistry,
@@ -1636,13 +1780,7 @@ describe("handleTrash", () => {
     await fs.mkdir(path.join(tmpDir, ".trash", "moveable"), { recursive: true });
     await fs.writeFile(path.join(tmpDir, ".trash", "moveable", "orphan-dup.md"), "already in trash");
 
-    const templateRegistry = new Map();
-    const tdir = path.join(tmpDir, "05-Templates");
-    for (const file of await fs.readdir(tdir)) {
-      const name = path.basename(file, ".md");
-      const content = await fs.readFile(path.join(tdir, file), "utf-8");
-      templateRegistry.set(name, { content, description: name });
-    }
+    const templateRegistry = await buildTemplateRegistry(tmpDir);
     const freshHandlers = await createHandlers({
       vaultPath: tmpDir,
       templateRegistry,
@@ -1687,13 +1825,7 @@ describe("handleTrash", () => {
 describe("handleMove", () => {
   // Helper to create fresh handlers with new temp files
   async function freshHandlersFor(tmpDir) {
-    const templateRegistry = new Map();
-    const tdir = path.join(tmpDir, "05-Templates");
-    for (const file of await fs.readdir(tdir)) {
-      const name = path.basename(file, ".md");
-      const content = await fs.readFile(path.join(tdir, file), "utf-8");
-      templateRegistry.set(name, { content, description: name });
-    }
+    const templateRegistry = await buildTemplateRegistry(tmpDir);
     return createHandlers({
       vaultPath: tmpDir,
       templateRegistry,
