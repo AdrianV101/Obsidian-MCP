@@ -165,12 +165,6 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     }
 
     const filePath = resolvePath(outputPath);
-    try {
-      await fs.access(filePath);
-      throw new Error(`File already exists: ${outputPath}. Use vault_edit or vault_append to modify existing files.`);
-    } catch (e) {
-      if (e.code !== "ENOENT") throw e;
-    }
 
     const title = path.basename(outputPath, ".md");
     const substituted = substituteTemplateVariables(templateInfo.content, {
@@ -188,7 +182,15 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
       await fs.mkdir(path.dirname(filePath), { recursive: true });
     }
 
-    await fs.writeFile(filePath, substituted, "utf-8");
+    // Atomic create — wx flag fails if file already exists (no TOCTOU race)
+    try {
+      await fs.writeFile(filePath, substituted, { encoding: "utf-8", flag: "wx" });
+    } catch (e) {
+      if (e.code === "EEXIST") {
+        throw new Error(`File already exists: ${outputPath}. Use vault_edit or vault_append to modify existing files.`, { cause: e });
+      }
+      throw e;
+    }
 
     // Update basename map with the new file
     const newBasename = path.basename(outputPath, ".md").toLowerCase();
@@ -318,6 +320,26 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     };
   }
 
+  // Linear-time glob matching (no regex, no backtracking)
+  function globMatch(pattern, str) {
+    const parts = pattern.split("*");
+    if (parts.length === 1) return str === pattern;
+
+    if (!str.startsWith(parts[0])) return false;
+    const lastPart = parts[parts.length - 1];
+    if (!str.endsWith(lastPart)) return false;
+
+    let pos = parts[0].length;
+    const endLimit = str.length - lastPart.length;
+    for (let i = 1; i < parts.length - 1; i++) {
+      if (parts[i] === "") continue; // consecutive wildcards
+      const idx = str.indexOf(parts[i], pos);
+      if (idx === -1 || idx + parts[i].length > endLimit) return false;
+      pos = idx + parts[i].length;
+    }
+    return pos <= endLimit;
+  }
+
   async function handleList(args) {
     const listPath = resolvePath(args.path || "");
     const entries = await fs.readdir(listPath, { withFileTypes: true });
@@ -333,7 +355,7 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
           const subItems = await getAllMarkdownFiles(path.join(listPath, entry.name));
           items.push(...subItems.map(f => `  ${path.join(itemPath, f)}`));
         }
-      } else if (!args.pattern || entry.name.match(new RegExp("^" + args.pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*?") + "$"))) {
+      } else if (!args.pattern || globMatch(args.pattern, entry.name)) {
         items.push(itemPath);
       }
     }

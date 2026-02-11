@@ -61,7 +61,13 @@ export async function findFilesLinkingTo(targetPath, vaultPath, allFiles, resolu
   const linking = [];
   for (const file of allFiles) {
     if (file === targetPath) continue;
-    const content = await fs.readFile(path.join(vaultPath, file), "utf-8");
+    let content;
+    try {
+      content = await fs.readFile(path.join(vaultPath, file), "utf-8");
+    } catch (e) {
+      if (e.code === "ENOENT") continue; // File deleted between listing and reading
+      throw e;
+    }
     const links = extractWikilinks(content);
     for (const link of links) {
       const resolved = resolveLink(link, resolutionMap, allFilesSet);
@@ -128,7 +134,13 @@ async function buildIncomingIndex(vaultPath, allFiles, resolutionMap, allFilesSe
   const index = new Map(); // targetPath -> Set<sourcePath>
 
   for (const file of allFiles) {
-    const content = await fs.readFile(path.join(vaultPath, file), "utf-8");
+    let content;
+    try {
+      content = await fs.readFile(path.join(vaultPath, file), "utf-8");
+    } catch (e) {
+      if (e.code === "ENOENT") continue; // File deleted between listing and reading
+      throw e;
+    }
     const links = extractWikilinks(content);
     for (const link of links) {
       const resolved = resolveLink(link, resolutionMap, allFilesSet);
@@ -229,8 +241,9 @@ export async function exploreNeighborhood({
             tags: Array.isArray(fm.tags) ? fm.tags.map(String) : [],
           };
         }
-      } catch {
-        // File unreadable - still record the node but skip link discovery
+      } catch (e) {
+        if (e.code !== "ENOENT") throw e;
+        // File deleted between listing and reading — record node but skip link discovery
       }
 
       // Record node

@@ -23,4 +23,4 @@ This project handles local file system access to an Obsidian vault. The main sec
 
 ## Supported Versions
 
-Only the latest version on `master` is actively maintained.
+Only the latest published version is actively maintained.

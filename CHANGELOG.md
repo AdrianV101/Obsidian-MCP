@@ -6,12 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-02-11
+
 ### Added
 - `vault_update_frontmatter` tool — safe, atomic YAML frontmatter field updates (set, create, delete fields with protected required fields)
 - `vault_trash` tool — soft-delete to `.trash/` (Obsidian convention) with broken incoming link warnings
 - `vault_move` tool — move/rename files with automatic wikilink updating across vault
 - `task` template for `vault_write` — structured task notes with status, priority, due date, project, and source fields
 - `vault_query` enhancements: `custom_fields` filter for arbitrary frontmatter matching, `sort_by`/`sort_order` for result ordering with smart priority and date handling
+
+### Fixed
+- Startup crash on invalid `VAULT_PATH` now exits with clear error message
+- `process.env.HOME` replaced with `os.homedir()` for Windows compatibility
+- Unhandled promise rejection on server initialization failure
+- Race condition in `vault_write` using atomic file creation (`wx` flag)
+- Memory leak in semantic search file watcher debounce timers
+- File watcher now closes on persistent errors instead of logging indefinitely
+- `findFilesLinkingTo` and `buildIncomingIndex` gracefully skip deleted files instead of crashing
+- Prototype pollution protection on frontmatter key validation (`__proto__`, `constructor`, `prototype` blocked)
+- ReDoS vulnerability in `vault_list` glob pattern — replaced regex with linear-time glob matching
+- `exploreNeighborhood` bare catch now only suppresses ENOENT, re-throws unexpected errors
+
+### Changed
+- Minimum Node.js version bumped from 18 to 20 (Node 18 is EOL)
 
 ## [1.0.0] - 2026-02-09
 
@@ -54,3 +71,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Path traversal prevention on all vault operations
 - Write tools require exact paths to prevent accidental modifications
 - Ambiguous fuzzy path matches return errors instead of guessing
+
+[Unreleased]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/AdrianV101/Obsidian-MCP/releases/tag/v1.0.0

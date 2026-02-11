@@ -7,7 +7,9 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import crypto from "crypto";
+import os from "os";
 import { createRequire } from "module";
+import fs from "fs/promises";
 import { SemanticIndex } from "./embeddings.js";
 import { ActivityLog } from "./activity.js";
 import { loadTemplates } from "./helpers.js";
@@ -18,7 +20,7 @@ const require = createRequire(import.meta.url);
 const { version: PKG_VERSION } = require("./package.json");
 
 // Get vault path from environment
-const VAULT_PATH = process.env.VAULT_PATH || process.env.HOME + "/Documents/PKM";
+const VAULT_PATH = process.env.VAULT_PATH || (os.homedir() + "/Documents/PKM");
 
 // Template registry (populated at startup)
 let templateRegistry = new Map();
@@ -237,7 +239,7 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
     },
     {
       name: "vault_query",
-      description: "Query notes by YAML frontmatter metadata (type, status, tags, dates)",
+      description: "Query notes by YAML frontmatter metadata (type, status, tags, dates, custom fields, sorting)",
       inputSchema: {
         type: "object",
         properties: {
@@ -404,6 +406,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // Initialize and start the server
 async function initializeServer() {
+  // Validate vault path exists
+  try {
+    const stat = await fs.stat(VAULT_PATH);
+    if (!stat.isDirectory()) {
+      console.error(`Error: VAULT_PATH is not a directory: ${VAULT_PATH}`);
+      process.exit(1);
+    }
+  } catch (e) {
+    if (e.code === "ENOENT") {
+      console.error(`Error: VAULT_PATH does not exist: ${VAULT_PATH}`);
+      console.error("Set the VAULT_PATH environment variable to your Obsidian vault directory.");
+      process.exit(1);
+    }
+    throw e;
+  }
+
   templateRegistry = await loadTemplates(VAULT_PATH);
 
   if (templateRegistry.size > 0) {
@@ -474,4 +492,7 @@ async function shutdown() {
 process.on("SIGINT", () => shutdown());
 process.on("SIGTERM", () => shutdown());
 
-initializeServer();
+initializeServer().catch(err => {
+  console.error("Fatal:", err);
+  process.exit(1);
+});

@@ -475,9 +475,10 @@ export class SemanticIndex {
         // Debounce per file
         if (this._debounceTimers.has(relativePath)) {
           clearTimeout(this._debounceTimers.get(relativePath));
+          this._debounceTimers.delete(relativePath);
         }
 
-        this._debounceTimers.set(relativePath, setTimeout(async () => {
+        const timer = setTimeout(async () => {
           this._debounceTimers.delete(relativePath);
           try {
             // Check if file still exists
@@ -490,11 +491,17 @@ export class SemanticIndex {
               console.error(`Watcher reindex error for ${relativePath}: ${e.message}`);
             }
           }
-        }, DEBOUNCE_MS));
+        }, DEBOUNCE_MS);
+
+        this._debounceTimers.set(relativePath, timer);
       });
 
       this.watcher.on("error", (err) => {
-        console.error(`File watcher error: ${err.message}`);
+        console.error(`File watcher error: ${err.message}. Stopping watcher.`);
+        if (this.watcher) {
+          this.watcher.close();
+          this.watcher = null;
+        }
       });
     } catch (err) {
       console.error(`Could not start file watcher: ${err.message}`);

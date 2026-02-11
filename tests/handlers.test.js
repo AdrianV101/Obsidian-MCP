@@ -2040,3 +2040,62 @@ describe("handleUpdateFrontmatter", () => {
     );
   });
 });
+
+describe("handleRead force param with FORCE_HARD_CAP", () => {
+  it("returns peek data with hard cap message for files exceeding 400k chars", async () => {
+    const hugeContent = "---\ntype: test\ncreated: 2026-01-01\ntags:\n  - test\n---\n" + "x".repeat(410_000);
+    await fs.writeFile(path.join(tmpDir, "huge-force-cap.md"), hugeContent);
+
+    // Rebuild handlers to pick up new file
+    const freshHandlers = await createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry: new Map(),
+      semanticIndex: null,
+      activityLog: null,
+      sessionId: "test",
+    });
+
+    const result = await freshHandlers.get("vault_read")({ path: "huge-force-cap.md", force: true });
+    const text = result.content[0].text;
+    assert.ok(text.includes("Hard cap reached"), "should include hard cap message");
+    assert.ok(text.includes("huge-force-cap.md"), "should include filename");
+    assert.ok(!text.includes("x".repeat(1000)), "should NOT include raw content");
+  });
+});
+
+describe("handleList ReDoS protection", () => {
+  it("completes quickly even with many wildcards (linear-time glob)", async () => {
+    // This pattern with regex .*? would cause catastrophic backtracking
+    const evilPattern = "*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*b";
+    const start = Date.now();
+    const result = await handlers.get("vault_list")({ path: "", pattern: evilPattern });
+    const elapsed = Date.now() - start;
+    assert.ok(elapsed < 1000, `should complete in <1s, took ${elapsed}ms`);
+    assert.ok(result.content[0].text);
+  });
+});
+
+describe("handleWrite atomic creation (wx flag)", () => {
+  it("rejects creation of existing file with clear error", async () => {
+    // Write an existing file
+    await fs.writeFile(path.join(tmpDir, "existing-wx.md"), "---\ntype: test\ncreated: 2026-01-01\ntags:\n  - test\n---\ncontent");
+
+    const reg = await buildTemplateRegistry(tmpDir);
+    const freshHandlers = await createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry: reg,
+      semanticIndex: null,
+      activityLog: null,
+      sessionId: "test",
+    });
+
+    await assert.rejects(
+      () => freshHandlers.get("vault_write")({
+        template: "research-note",
+        path: "existing-wx.md",
+        frontmatter: { tags: ["test"] }
+      }),
+      /already exists/i
+    );
+  });
+});
