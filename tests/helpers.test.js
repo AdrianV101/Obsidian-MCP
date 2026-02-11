@@ -1027,6 +1027,16 @@ describe("updateFrontmatter", () => {
     assert.throws(() => updateFrontmatter(content, { status: "done" }), /no frontmatter/i);
   });
 
+  it("throws on unclosed frontmatter", () => {
+    const content = "---\ntype: task\nstatus: pending\n# Title\nBody text\n";
+    assert.throws(() => updateFrontmatter(content, { status: "done" }), /unclosed/i);
+  });
+
+  it("throws descriptive error on malformed YAML", () => {
+    const content = "---\n: invalid: yaml: [broken\n---\n# Title\n";
+    assert.throws(() => updateFrontmatter(content, { status: "done" }), /failed to parse/i);
+  });
+
   it("rejects invalid field keys", () => {
     const content = "---\ntype: task\ncreated: 2026-02-10\ntags:\n  - task\n---\n# Title\n";
     assert.throws(() => updateFrontmatter(content, { "bad key!": "value" }), /invalid.*key/i);

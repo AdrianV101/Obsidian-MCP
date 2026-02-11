@@ -1205,6 +1205,22 @@ describe("handleQuery", () => {
     assert.ok(posA < posB, "earliest created first");
     assert.ok(posB < posC, "latest created last");
   });
+
+  it("applies limit after sorting (not before)", async () => {
+    const result = await handlers.get("vault_query")({
+      type: "task",
+      folder: "tasks",
+      sort_by: "priority",
+      sort_order: "desc",
+      limit: 2
+    });
+    const text = result.content[0].text;
+    // Key invariant: limit is applied AFTER sorting, so the highest-priority
+    // task (urgent) must appear, and the lowest-priority (low) must not.
+    assert.ok(text.includes("task-c"), "urgent task must be in top 2");
+    assert.ok(!text.includes("task-b"), "low task must be excluded by limit");
+    assert.ok(text.includes("2 note"), "should report exactly 2 results");
+  });
 });
 
 // ─── vault_tags ────────────────────────────────────────────────────────
@@ -1809,14 +1825,18 @@ describe("handleUpdateFrontmatter", () => {
     );
   });
 
-  it("errors on non-existent file", async () => {
-    await assert.rejects(
-      () => handlers.get("vault_update_frontmatter")({
+  it("errors on non-existent file without leaking absolute path", async () => {
+    try {
+      await handlers.get("vault_update_frontmatter")({
         path: "tasks/no-such-file.md",
         fields: { status: "done" }
-      }),
-      /ENOENT|no such file/i
-    );
+      });
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.ok(e.message.includes("File not found"), "should have clear error message");
+      assert.ok(e.message.includes("tasks/no-such-file.md"), "should include relative path");
+      assert.ok(!e.message.includes(tmpDir), "should not leak absolute vault path");
+    }
   });
 
   it("errors on file without frontmatter", async () => {

@@ -439,6 +439,7 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     };
 
     for (const file of files) {
+      if (!args.sort_by && results.length >= limit) break;
       const filePath = path.join(searchDir, file);
       const content = await fs.readFile(filePath, "utf-8");
       const metadata = extractFrontmatter(content);
@@ -800,7 +801,15 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
 
   async function handleUpdateFrontmatter(args) {
     const filePath = resolvePath(args.path);
-    const content = await fs.readFile(filePath, "utf-8");
+    let content;
+    try {
+      content = await fs.readFile(filePath, "utf-8");
+    } catch (e) {
+      if (e.code === "ENOENT") {
+        throw new Error(`File not found: ${args.path}`, { cause: e });
+      }
+      throw e;
+    }
     const { content: newContent, frontmatter } = updateFrontmatter(content, args.fields || {});
     await fs.writeFile(filePath, newContent, "utf-8");
 

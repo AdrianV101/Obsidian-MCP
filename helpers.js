@@ -841,7 +841,7 @@ export function updateFrontmatter(content, fields) {
     }
   }
 
-  const newYaml = yaml.dump(parsed, { lineWidth: -1, noRefs: true, sortKeys: false });
+  const newYaml = yaml.dump(parsed, { lineWidth: -1, noRefs: true, sortKeys: false, schema: yaml.JSON_SCHEMA });
   const newContent = "---\n" + newYaml + "---" + body;
 
   return { content: newContent, frontmatter: { ...parsed } };
