@@ -17,6 +17,8 @@ Claude Code is powerful for writing code, but it forgets everything between sess
 
 Without this, every Claude Code session starts from scratch. With it, your AI assistant has a working memory that compounds over time.
 
+<https://github.com/AdrianV101/Obsidian-MCP/raw/master/demo.mp4>
+
 ## Features
 
 | Tool | Description |
