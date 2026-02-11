@@ -316,10 +316,10 @@ export function substituteTemplateVariables(content, vars) {
 
       for (const [key, value] of Object.entries(vars.frontmatter)) {
         if (key === "tags") continue;
+        if (DANGEROUS_KEYS.has(key)) {
+          throw new Error(`Disallowed frontmatter key: "${key}"`);
+        }
         if (typeof value === "string") {
-          if (DANGEROUS_KEYS.has(key)) {
-            throw new Error(`Disallowed frontmatter key: "${key}"`);
-          }
           if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(key)) {
             throw new Error(`Invalid frontmatter key: "${key}". Keys must start with a letter and contain only letters, digits, hyphens, or underscores.`);
           }

@@ -2064,15 +2064,13 @@ describe("handleRead force param with FORCE_HARD_CAP", () => {
 });
 
 describe("handleList ReDoS protection", () => {
-  it("rejects patterns with more than 10 wildcards", async () => {
-    await assert.rejects(
-      () => handlers.get("vault_list")({ path: "", pattern: "***********a" }),
-      /too many wildcards/i
-    );
-  });
-
-  it("allows patterns with 10 or fewer wildcards", async () => {
-    const result = await handlers.get("vault_list")({ path: "", pattern: "*.md" });
+  it("completes quickly even with many wildcards (linear-time glob)", async () => {
+    // This pattern with regex .*? would cause catastrophic backtracking
+    const evilPattern = "*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*b";
+    const start = Date.now();
+    const result = await handlers.get("vault_list")({ path: "", pattern: evilPattern });
+    const elapsed = Date.now() - start;
+    assert.ok(elapsed < 1000, `should complete in <1s, took ${elapsed}ms`);
     assert.ok(result.content[0].text);
   });
 });

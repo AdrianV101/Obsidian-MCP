@@ -320,13 +320,27 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     };
   }
 
-  async function handleList(args) {
-    if (args.pattern) {
-      const wildcardCount = (args.pattern.match(/\*/g) || []).length;
-      if (wildcardCount > 10) {
-        throw new Error("Pattern contains too many wildcards (max 10)");
-      }
+  // Linear-time glob matching (no regex, no backtracking)
+  function globMatch(pattern, str) {
+    const parts = pattern.split("*");
+    if (parts.length === 1) return str === pattern;
+
+    if (!str.startsWith(parts[0])) return false;
+    const lastPart = parts[parts.length - 1];
+    if (!str.endsWith(lastPart)) return false;
+
+    let pos = parts[0].length;
+    const endLimit = str.length - lastPart.length;
+    for (let i = 1; i < parts.length - 1; i++) {
+      if (parts[i] === "") continue; // consecutive wildcards
+      const idx = str.indexOf(parts[i], pos);
+      if (idx === -1 || idx + parts[i].length > endLimit) return false;
+      pos = idx + parts[i].length;
     }
+    return pos <= endLimit;
+  }
+
+  async function handleList(args) {
     const listPath = resolvePath(args.path || "");
     const entries = await fs.readdir(listPath, { withFileTypes: true });
 
@@ -341,7 +355,7 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
           const subItems = await getAllMarkdownFiles(path.join(listPath, entry.name));
           items.push(...subItems.map(f => `  ${path.join(itemPath, f)}`));
         }
-      } else if (!args.pattern || entry.name.match(new RegExp("^" + args.pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*?") + "$"))) {
+      } else if (!args.pattern || globMatch(args.pattern, entry.name)) {
         items.push(itemPath);
       }
     }

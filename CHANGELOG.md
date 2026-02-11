@@ -24,10 +24,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - File watcher now closes on persistent errors instead of logging indefinitely
 - `findFilesLinkingTo` and `buildIncomingIndex` gracefully skip deleted files instead of crashing
 - Prototype pollution protection on frontmatter key validation (`__proto__`, `constructor`, `prototype` blocked)
-- ReDoS protection on `vault_list` glob pattern (max 10 wildcards)
+- ReDoS vulnerability in `vault_list` glob pattern — replaced regex with linear-time glob matching
+- `exploreNeighborhood` bare catch now only suppresses ENOENT, re-throws unexpected errors
 
 ### Changed
-- Minimum Node.js version bumped from 18 to 20 (Node 18 is EOL; `fs.watch({ recursive: true })` requires Node 20+ on Linux)
+- Minimum Node.js version bumped from 18 to 20 (Node 18 is EOL)
 
 ## [1.0.0] - 2026-02-09
 

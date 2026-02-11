@@ -493,6 +493,6 @@ process.on("SIGINT", () => shutdown());
 process.on("SIGTERM", () => shutdown());
 
 initializeServer().catch(err => {
-  console.error(`Fatal: ${err.message}`);
+  console.error("Fatal:", err);
   process.exit(1);
 });

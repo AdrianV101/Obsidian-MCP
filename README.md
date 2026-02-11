@@ -72,7 +72,7 @@ Ambiguous matches return an error listing candidates. Exact paths always work un
 
 ## Prerequisites
 
-- **Node.js >= 20** (uses native `fetch`, ES modules, and `fs.watch` recursive)
+- **Node.js >= 20** (Node 18 is EOL; uses native `fetch` and ES modules)
 - **An MCP-compatible client** such as [Claude Code](https://claude.ai/code)
 - **C++ build tools** for `better-sqlite3` native addon:
   - **macOS**: `xcode-select --install`
@@ -234,7 +234,7 @@ Copy the `templates/` files from this repo into your vault's `05-Templates/` dir
 Set `OPENAI_API_KEY` in your `settings.json` env block. Without it, `vault_semantic_search` and `vault_suggest_links` are hidden entirely.
 
 **Semantic index not updating after file changes**
-The file watcher requires Node.js >= 20 for recursive watching on Linux. Check your Node version with `node -v`.
+Check your Node version with `node -v`. The file watcher uses `fs.watch({ recursive: true })` which requires Node.js >= 18.13 on Linux.
 
 ## Contributing
 

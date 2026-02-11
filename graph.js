@@ -241,8 +241,9 @@ export async function exploreNeighborhood({
             tags: Array.isArray(fm.tags) ? fm.tags.map(String) : [],
           };
         }
-      } catch {
-        // File unreadable - still record the node but skip link discovery
+      } catch (e) {
+        if (e.code !== "ENOENT") throw e;
+        // File deleted between listing and reading — record node but skip link discovery
       }
 
       // Record node
