@@ -1,10 +1,11 @@
 # Obsidian PKM MCP Server
 
+[![npm version](https://img.shields.io/npm/v/pkm-mcp-server)](https://www.npmjs.com/package/pkm-mcp-server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js >= 18](https://img.shields.io/badge/Node.js-%3E%3D18-green.svg)](https://nodejs.org/)
+[![Node.js >= 20](https://img.shields.io/badge/Node.js-%3E%3D20-green.svg)](https://nodejs.org/)
 [![CI](https://github.com/AdrianV101/Obsidian-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/AdrianV101/Obsidian-MCP/actions/workflows/ci.yml)
 
-An MCP (Model Context Protocol) server that gives Claude Code full read/write access to your Obsidian vault. 18 tools for note CRUD, full-text search, semantic search, graph traversal, metadata queries, and session activity tracking.
+An MCP (Model Context Protocol) server that gives Claude Code full read/write access to your Obsidian vault. 18 tools for note CRUD, full-text search, semantic search, graph traversal, metadata queries, and session activity tracking. Published on npm as [`pkm-mcp-server`](https://www.npmjs.com/package/pkm-mcp-server).
 
 ## Why
 
@@ -71,7 +72,8 @@ Ambiguous matches return an error listing candidates. Exact paths always work un
 
 ## Prerequisites
 
-- **Node.js >= 18** (uses native `fetch` and ES modules)
+- **Node.js >= 20** (uses native `fetch`, ES modules, and `fs.watch` recursive)
+- **An MCP-compatible client** such as [Claude Code](https://claude.ai/code)
 - **C++ build tools** for `better-sqlite3` native addon:
   - **macOS**: `xcode-select --install`
   - **Linux**: `sudo apt install build-essential python3` (Debian/Ubuntu) or equivalent
@@ -80,6 +82,14 @@ Ambiguous matches return an error listing candidates. Exact paths always work un
 ## Quick Start
 
 ### 1. Install
+
+**From npm** (recommended):
+
+```bash
+npm install -g pkm-mcp-server
+```
+
+**From source:**
 
 ```bash
 git clone https://github.com/AdrianV101/Obsidian-MCP.git
@@ -90,6 +100,24 @@ npm install
 ### 2. Register with Claude Code
 
 Add to `~/.claude/settings.json`:
+
+**If installed from npm:**
+
+```json
+{
+  "mcpServers": {
+    "obsidian-pkm": {
+      "command": "npx",
+      "args": ["-y", "pkm-mcp-server"],
+      "env": {
+        "VAULT_PATH": "/absolute/path/to/your/obsidian/vault"
+      }
+    }
+  }
+}
+```
+
+**If installed from source:**
 
 ```json
 {
@@ -190,6 +218,23 @@ All paths passed to tools are relative to vault root. The server includes path s
 **Graph exploration** resolves `[[wikilinks]]` to file paths (handling aliases, headings, and ambiguous basenames), then does BFS traversal to return notes grouped by hop distance.
 
 **Activity logging** records every tool call with timestamps and session IDs, enabling Claude to recall what happened in previous conversations.
+
+## Troubleshooting
+
+**`better-sqlite3` build fails during install**
+You need C++ build tools. See [Prerequisites](#prerequisites) for your platform. On Linux, `sudo apt install build-essential python3` usually fixes it.
+
+**Server starts but all tool calls fail with ENOENT**
+Your `VAULT_PATH` is wrong or missing. The server now validates this at startup and exits with a clear error. Set it explicitly in your `settings.json` env block.
+
+**`vault_write` says "no templates available"**
+Copy the `templates/` files from this repo into your vault's `05-Templates/` directory. The server loads templates from there at startup.
+
+**Semantic search not appearing in tool list**
+Set `OPENAI_API_KEY` in your `settings.json` env block. Without it, `vault_semantic_search` and `vault_suggest_links` are hidden entirely.
+
+**Semantic index not updating after file changes**
+The file watcher requires Node.js >= 20 for recursive watching on Linux. Check your Node version with `node -v`.
 
 ## Contributing
 

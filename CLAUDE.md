@@ -209,7 +209,7 @@ Register the MCP server in `~/.claude/settings.json`:
 }
 ```
 
-`OPENAI_API_KEY` is optional — without it, all tools except `vault_semantic_search` work normally.
+`OPENAI_API_KEY` is optional — without it, all tools except `vault_semantic_search` and `vault_suggest_links` work normally.
 
 ## Vault Structure Convention
 

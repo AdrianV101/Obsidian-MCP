@@ -1,14 +1,17 @@
 {
   "name": "pkm-mcp-server",
-  "version": "1.0.0",
-  "description": "MCP server for Obsidian vault integration with Claude Code",
+  "version": "1.1.0",
+  "description": "MCP server for Obsidian vault integration with Claude Code — 18 tools for notes, search, and graph traversal",
   "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
   "bin": {
     "pkm-mcp-server": "index.js"
   },
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "files": [
     "*.js",
@@ -35,7 +38,13 @@
     "pkm",
     "knowledge-management",
     "claude-code",
-    "model-context-protocol"
+    "model-context-protocol",
+    "claude",
+    "ai",
+    "markdown",
+    "notes",
+    "semantic-search",
+    "wikilinks"
   ],
   "homepage": "https://github.com/AdrianV101/Obsidian-MCP#readme",
   "bugs": {

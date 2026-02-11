@@ -28,7 +28,7 @@ Be respectful, constructive, and inclusive. We follow the [Contributor Covenant]
    npm start
    ```
 
-4. Run tests:
+4. Run tests (uses Node.js built-in test runner with `node:test` and `assert/strict`):
    ```bash
    npm test
    ```

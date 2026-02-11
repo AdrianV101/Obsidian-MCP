@@ -317,6 +317,14 @@ describe("substituteTemplateVariables", () => {
     assert.ok(result.includes("status: pending"), "should leave status as template default");
   });
 
+  it("rejects __proto__ frontmatter key (prototype pollution)", () => {
+    const template = "---\ntype: test\ncreated: <% tp.date.now(\"YYYY-MM-DD\") %>\ntags: []\n---\n# <% tp.file.title %>";
+    assert.throws(
+      () => substituteTemplateVariables(template, { title: "Test", frontmatter: JSON.parse('{"__proto__": "evil"}') }),
+      /disallowed/i
+    );
+  });
+
   it("correctly splits frontmatter from body when --- appears mid-line in frontmatter value", () => {
     // Template with --- mid-line in frontmatter value should properly separate frontmatter from body
     const template = "---\ntype: task\nstatus: pending\ndescription: This --- is mid-line\n---\n# <% tp.file.title %>\n\nBody text.";
@@ -1056,6 +1064,32 @@ describe("updateFrontmatter", () => {
   it("throws descriptive error on malformed YAML", () => {
     const content = "---\n: invalid: yaml: [broken\n---\n# Title\n";
     assert.throws(() => updateFrontmatter(content, { status: "done" }), /failed to parse/i);
+  });
+
+  it("rejects prototype pollution keys (__proto__)", () => {
+    const content = "---\ntype: test\ncreated: 2026-01-01\ntags:\n  - test\n---\nBody";
+    // JSON.parse creates __proto__ as an own property (like MCP tool input)
+    const fields = JSON.parse('{"__proto__": "evil"}');
+    assert.throws(
+      () => updateFrontmatter(content, fields),
+      /disallowed/i
+    );
+  });
+
+  it("rejects prototype pollution keys (constructor)", () => {
+    const content = "---\ntype: test\ncreated: 2026-01-01\ntags:\n  - test\n---\nBody";
+    assert.throws(
+      () => updateFrontmatter(content, { constructor: "evil" }),
+      /disallowed/i
+    );
+  });
+
+  it("rejects prototype pollution keys (prototype)", () => {
+    const content = "---\ntype: test\ncreated: 2026-01-01\ntags:\n  - test\n---\nBody";
+    assert.throws(
+      () => updateFrontmatter(content, { prototype: "evil" }),
+      /disallowed/i
+    );
   });
 
   it("rejects invalid field keys", () => {

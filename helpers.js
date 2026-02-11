@@ -10,6 +10,7 @@ export const CHUNK_SIZE = 80_000;                 // chars per chunk
 
 const PRIORITY_RANKS = { urgent: 3, high: 2, normal: 1, low: 0 };
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 /**
  * Compare two frontmatter values for sorting.
@@ -316,6 +317,9 @@ export function substituteTemplateVariables(content, vars) {
       for (const [key, value] of Object.entries(vars.frontmatter)) {
         if (key === "tags") continue;
         if (typeof value === "string") {
+          if (DANGEROUS_KEYS.has(key)) {
+            throw new Error(`Disallowed frontmatter key: "${key}"`);
+          }
           if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(key)) {
             throw new Error(`Invalid frontmatter key: "${key}". Keys must start with a letter and contain only letters, digits, hyphens, or underscores.`);
           }
@@ -822,6 +826,9 @@ export function updateFrontmatter(content, fields) {
   const KEY_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 
   for (const [key, value] of Object.entries(fields)) {
+    if (DANGEROUS_KEYS.has(key)) {
+      throw new Error(`Disallowed frontmatter key: "${key}"`);
+    }
     if (!KEY_REGEX.test(key)) {
       throw new Error(`Invalid frontmatter key: "${key}". Keys must start with a letter and contain only letters, digits, hyphens, or underscores.`);
     }

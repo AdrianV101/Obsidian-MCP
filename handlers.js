@@ -165,12 +165,6 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     }
 
     const filePath = resolvePath(outputPath);
-    try {
-      await fs.access(filePath);
-      throw new Error(`File already exists: ${outputPath}. Use vault_edit or vault_append to modify existing files.`);
-    } catch (e) {
-      if (e.code !== "ENOENT") throw e;
-    }
 
     const title = path.basename(outputPath, ".md");
     const substituted = substituteTemplateVariables(templateInfo.content, {
@@ -188,7 +182,15 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
       await fs.mkdir(path.dirname(filePath), { recursive: true });
     }
 
-    await fs.writeFile(filePath, substituted, "utf-8");
+    // Atomic create — wx flag fails if file already exists (no TOCTOU race)
+    try {
+      await fs.writeFile(filePath, substituted, { encoding: "utf-8", flag: "wx" });
+    } catch (e) {
+      if (e.code === "EEXIST") {
+        throw new Error(`File already exists: ${outputPath}. Use vault_edit or vault_append to modify existing files.`, { cause: e });
+      }
+      throw e;
+    }
 
     // Update basename map with the new file
     const newBasename = path.basename(outputPath, ".md").toLowerCase();
@@ -319,6 +321,12 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
   }
 
   async function handleList(args) {
+    if (args.pattern) {
+      const wildcardCount = (args.pattern.match(/\*/g) || []).length;
+      if (wildcardCount > 10) {
+        throw new Error("Pattern contains too many wildcards (max 10)");
+      }
+    }
     const listPath = resolvePath(args.path || "");
     const entries = await fs.readdir(listPath, { withFileTypes: true });
 

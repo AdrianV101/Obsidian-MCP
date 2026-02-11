@@ -58,4 +58,17 @@ describe("findFilesLinkingTo", () => {
     const paths = result.map(r => r.file);
     assert.ok(!paths.includes("notes/target.md"));
   });
+
+  it("gracefully skips deleted files (ENOENT) without crashing", async () => {
+    const allFiles = await getAllMarkdownFiles(tmpDir);
+    const { basenameMap, allFilesSet } = buildBasenameMap(allFiles);
+
+    // Include a file path that doesn't exist on disk
+    const filesWithGhost = [...allFiles, "notes/ghost-file.md"];
+
+    // Should not throw — ghost file is silently skipped
+    const result = await findFilesLinkingTo("notes/target.md", tmpDir, filesWithGhost, basenameMap, allFilesSet);
+    const paths = result.map(r => r.file).sort();
+    assert.deepEqual(paths, ["notes/linker1.md", "notes/linker2.md"]);
+  });
 });
