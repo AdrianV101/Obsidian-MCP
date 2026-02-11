@@ -508,9 +508,9 @@ function chunkNote(content, filePath) {
   // Strip frontmatter
   let body = content;
   if (content.startsWith("---")) {
-    const endIndex = content.indexOf("---", 3);
+    const endIndex = content.indexOf("\n---", 3);
     if (endIndex !== -1) {
-      body = content.slice(endIndex + 3).trim();
+      body = content.slice(endIndex + 4).trim();
     }
   }
 

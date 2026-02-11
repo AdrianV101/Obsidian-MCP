@@ -620,8 +620,8 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
 
     let body = inputText;
     if (body.startsWith("---")) {
-      const endIdx = body.indexOf("---", 3);
-      if (endIdx !== -1) body = body.slice(endIdx + 3).trim();
+      const endIdx = body.indexOf("\n---", 3);
+      if (endIdx !== -1) body = body.slice(endIdx + 4).trim();
     }
     if (!body) throw new Error("No content to analyze");
 
