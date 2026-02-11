@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "MCP server for Obsidian vault integration with Claude Code",
   "main": "index.js",
+  "bin": {
+    "pkm-mcp-server": "index.js"
+  },
   "type": "module",
   "engines": {
     "node": ">=18"
