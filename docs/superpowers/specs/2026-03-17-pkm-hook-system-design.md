@@ -25,6 +25,24 @@ Automate the read-at-start and write-continuously lifecycle so that:
 - Token cost tracking or budgeting
 - Automatic devlog summarization at session end (passive sweep handles this incrementally)
 
+## Critical Assumptions (Must Verify in Phase 0)
+
+Before any implementation work, the following assumptions must be empirically validated with a proof-of-concept hook. If any fail, the architecture requires rework (see Fallback Plan).
+
+| # | Assumption | If False |
+|---|-----------|----------|
+| A1 | `async: true` works on `type: "agent"` hooks (not just command hooks) | Agent hooks block Claude; must fall back to async command hooks that spawn `claude -p` subprocesses |
+| A2 | Agent hooks inherit MCP server configuration and can call MCP tools (e.g., `vault_write`) | PostToolUse agent cannot create vault notes via MCP; must use built-in Read/Write tools with direct file access (losing template validation, activity logging, frontmatter enforcement) |
+| A3 | `$ARGUMENTS` placeholder in agent hook prompts injects the full hook input JSON | Agents cannot access transcript_path or tool_input; must use an alternative injection mechanism or fall back to command hooks |
+
+### Fallback Plan
+
+If A1 fails: Replace agent hooks with `type: "command"` hooks using `async: true` (confirmed for command hooks). The command scripts invoke `claude -p --model <model> --mcp-config <config>` as a background subprocess, passing the extracted context as the prompt.
+
+If A2 fails: The PostToolUse agent and Stop agent must use built-in `Read` and `Write` tools to interact with vault files directly. This loses template validation, activity logging, and frontmatter enforcement from the MCP server, but the agent could import logic from `helpers.js` via a wrapper script.
+
+If A3 fails: Use command hooks to preprocess hook input, then pass extracted data to `claude -p` via stdin or arguments.
+
 ## Architecture
 
 ```
@@ -64,7 +82,7 @@ Automate the read-at-start and write-continuously lifecycle so that:
 
 | # | Component | Hook Type | Model | Async | Trigger |
 |---|-----------|-----------|-------|-------|---------|
-| 1 | SessionStart context loader | `command` | N/A (Node script) | No (must complete before session) | `startup`, `clear` |
+| 1 | SessionStart context loader | `command` | N/A (Node script) | No (must complete before session) | `startup`, `clear`, `compact` |
 | 2 | Stop passive sweep | `agent` | `claude-sonnet-4-6` | Yes | Every Stop event |
 | 3 | `vault_capture` MCP tool | N/A (MCP tool) | N/A | N/A (returns immediately) | Claude calls it explicitly |
 | 4 | PostToolUse capture agent | `agent` | `claude-opus-4-6` | Yes | After `vault_capture` tool call |
@@ -73,7 +91,7 @@ Automate the read-at-start and write-continuously lifecycle so that:
 
 ### Trigger
 
-Fires on `startup` and `clear` matchers. Does **not** fire on `resume` (Claude already has prior context on resume).
+Fires on `startup`, `clear`, and `compact` matchers. Does **not** fire on `resume` (Claude already has prior context on resume). The `compact` trigger is important: after context compaction, Claude loses prior context and needs PKM context re-injected, same as a fresh start.
 
 ### Resolution Logic
 
@@ -133,7 +151,7 @@ Every `Stop` event. Runs with `async: true` so Claude and the user are not block
 
 ### Transcript Processing
 
-The agent receives `transcript_path` pointing to the session's JSONL transcript file. The agent prompt explicitly defines "current exchange" as:
+The agent receives hook input JSON via the `$ARGUMENTS` placeholder in its prompt. This JSON includes `transcript_path`, `session_id`, `cwd`, and `last_assistant_message`. The agent prompt explicitly defines "current exchange" as:
 
 > **One exchange = the last contiguous user message + the last contiguous assistant message at the end of the JSONL file.** Each line in the JSONL has a `role` field (`"user"` or `"assistant"`). Read the file, locate the final user message and the final assistant message. These two messages are the current exchange. All prior messages are historical context — they provide understanding of what is being discussed but must NOT be captured (they were already processed by previous Stop events).
 
@@ -228,14 +246,11 @@ A lightweight signaling tool that Claude calls when it explicitly identifies som
 
 ### Handler Implementation
 
-Minimal — validates required fields, returns acknowledgment:
+Minimal — returns acknowledgment. Required field validation (`type`, `title`, `content`) is handled by the MCP protocol's `inputSchema` before the handler is called, so no redundant checks needed:
 
 ```javascript
 async function handleVaultCapture(args) {
-  const { type, title, content } = args;
-  if (!type || !title || !content) {
-    throw new Error("vault_capture requires type, title, and content");
-  }
+  const { type, title } = args;
   return {
     content: [{
       type: "text",
@@ -268,7 +283,7 @@ The agent inherits the full MCP configuration, giving it access to all 18+ vault
 
 ### Agent Prompt
 
-The agent receives `tool_input` (the arguments Claude passed to `vault_capture`) and `tool_response` in its context. Its prompt:
+The agent receives the full hook input JSON via the `$ARGUMENTS` placeholder in its prompt. This JSON includes `tool_name`, `tool_input` (the arguments Claude passed to `vault_capture`), `tool_response`, and `tool_use_id`. Its prompt:
 
 > You are a PKM note creation agent. You have received a capture signal from a Claude Code session. Using the vault tools available to you, create a properly structured vault note.
 >
@@ -294,7 +309,7 @@ The following JSON is added to `~/.claude/settings.json` under the `hooks` key:
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|clear",
+        "matcher": "startup|clear|compact",
         "hooks": [
           {
             "type": "command",
@@ -313,7 +328,7 @@ The following JSON is added to `~/.claude/settings.json` under the `hooks` key:
             "model": "claude-sonnet-4-6",
             "async": true,
             "timeout": 120,
-            "prompt": "You are a PKM passive capture agent. Your job is to identify decisions, task changes, and research findings from the most recent conversation exchange and append them to the vault staging inbox.\n\n## Transcript Processing\n\nRead the transcript JSONL file. Find the LAST user message and LAST assistant message at the end of the file — these are the current exchange. All prior messages are historical context only. Do NOT capture anything from prior messages.\n\n## What to Capture\n\n1. **Decisions**: Technical or architectural choices that were AGREED upon (not proposed, not still being discussed)\n2. **Task changes**: New tasks identified, tasks completed, priority changes, blockers discovered\n3. **Research findings**: Patterns discovered, library behaviors documented, gotchas found\n\n## Noise Suppression\n\nBe conservative. Skip: trivial exchanges, clarification Q&A that hasn't resolved, implementation details obvious from code, anything restating existing project context. When in doubt, don't capture.\n\n## Output\n\nIf you find PKM-worthy content, use vault_append to add entries to 00-Inbox/captures-{today's date YYYY-MM-DD}.md. If the file doesn't exist, create it first with vault_write (type: fleeting, tags: [capture, auto]). Each entry format:\n\n## HH:MM — {Category}: {Title}\n\n{1-3 sentence description}\n\n---\n\nIf nothing is PKM-worthy, do nothing."
+            "prompt": "You are a PKM passive capture agent. Your job is to identify decisions, task changes, and research findings from the most recent conversation exchange and append them to the vault staging inbox.\n\n## Hook Input\n\nThe hook input JSON is: $ARGUMENTS\n\nExtract `transcript_path` and `session_id` from this JSON.\n\n## Transcript Processing\n\nUse the Read tool to read the transcript JSONL file at `transcript_path`. Find the LAST user message and LAST assistant message at the end of the file — these are the current exchange. One exchange = one contiguous user message + one contiguous assistant response (the last complete turn pair in the JSONL). All prior messages are historical context only. Do NOT capture anything from prior messages.\n\n## What to Capture\n\n1. **Decisions**: Technical or architectural choices that were AGREED upon (not proposed, not still being discussed)\n2. **Task changes**: New tasks identified, tasks completed, priority changes, blockers discovered\n3. **Research findings**: Patterns discovered, library behaviors documented, gotchas found\n\n## Noise Suppression\n\nBe conservative. Skip: trivial exchanges, clarification Q&A that hasn't resolved, implementation details obvious from code, anything restating existing project context. When in doubt, don't capture.\n\n## Deduplication\n\nIf the assistant message in the current exchange contains a vault_capture tool call, the content of that capture is already being handled by the explicit capture agent. Do NOT also capture it in the staging inbox — skip it to avoid semantic duplication.\n\n## Output\n\nIf you find PKM-worthy content, use vault_append to add entries to 00-Inbox/captures-{today's date YYYY-MM-DD}.md. If the file doesn't exist, create it first with vault_write (template: fleeting-note, tags: [capture, auto]). Each entry format:\n\n## HH:MM — {Category}: {Title}\n\n{1-3 sentence description}\n\n**Source:** session {first 8 chars of session_id}\n\n---\n\nIf nothing is PKM-worthy, do nothing."
           }
         ]
       }
@@ -327,7 +342,7 @@ The following JSON is added to `~/.claude/settings.json` under the `hooks` key:
             "model": "claude-opus-4-6",
             "async": true,
             "timeout": 120,
-            "prompt": "You are a PKM note creation agent. A Claude Code session has explicitly signaled that something is worth capturing. The tool_input contains: type, title, content, and optionally priority and project.\n\nUsing the vault tools available to you, create a properly structured vault note:\n\n- **adr**: vault_write with template 'adr'. Path: 01-Projects/{project}/development/decisions/ADR-NNN-{kebab-title}.md. List existing ADRs to determine next number. Expand content into Context, Decision, Consequences sections.\n- **task**: First vault_query to check for existing task with similar title. If exists, vault_update_frontmatter to update. If not, vault_write with template 'task'. Path: 01-Projects/{project}/tasks/{kebab-title}.md.\n- **research**: vault_write with template 'research-note'. Path: 01-Projects/{project}/research/{kebab-title}.md.\n- **bug**: vault_write with template 'troubleshooting-log'. Path: 01-Projects/{project}/development/debug/{kebab-title}.md.\n\nIf project is not specified, check vault_activity recent entries to infer the active project.\n\nAlways verify the note was created successfully. If vault_write fails (e.g., file exists), adapt — use vault_append or choose a different filename."
+            "prompt": "You are a PKM note creation agent. A Claude Code session has explicitly signaled that something is worth capturing.\n\n## Hook Input\n\nThe hook input JSON is: $ARGUMENTS\n\nExtract `tool_input` from this JSON. It contains: type, title, content, and optionally priority and project.\n\n## Instructions\n\nUsing the vault tools available to you, create a properly structured vault note:\n\n- **adr**: vault_write with template 'adr'. Path: 01-Projects/{project}/development/decisions/ADR-NNN-{kebab-title}.md. List existing ADRs with vault_list to determine next number. Expand content into Context, Decision, Consequences sections.\n- **task**: First vault_query to check for existing task with similar title. If exists, vault_update_frontmatter to update. If not, vault_write with template 'task'. Path: 01-Projects/{project}/tasks/{kebab-title}.md.\n- **research**: vault_write with template 'research-note'. Path: 01-Projects/{project}/research/{kebab-title}.md.\n- **bug**: vault_write with template 'troubleshooting-log'. Path: 01-Projects/{project}/development/debug/{kebab-title}.md.\n\nIf project is not specified in tool_input, check vault_activity recent entries to infer the active project.\n\nAlways verify the note was created successfully. If vault_write fails (e.g., file exists), adapt — use vault_append or choose a different filename."
           }
         ]
       }
@@ -381,6 +396,10 @@ A passive sweep agent runs after each response to capture implicit decisions, ta
 - PostToolUse capture agent writes to `01-Projects/{project}/...` (structured notes)
 - Different destinations — no file-level race condition between the two agents
 
+### Semantic Deduplication
+
+When Claude calls `vault_capture` in a response, the Stop passive sweep also fires for that same exchange. To prevent double-capture, the Stop agent prompt explicitly instructs: "If the assistant message contains a `vault_capture` tool call, skip the content of that capture — it is already being handled by the explicit capture agent." This means the Stop agent only captures *implicit* findings from exchanges that also had explicit captures.
+
 ### Idempotency
 
 - Each Stop event processes only the most recent exchange (last user+assistant turn pair)
@@ -396,15 +415,33 @@ A passive sweep agent runs after each response to capture implicit decisions, ta
 ### Cost Considerations
 
 - **SessionStart:** Free (Node script, no AI)
-- **Stop passive sweep (Sonnet):** Runs on every response. Cost proportional to session length. For a typical session with 20 exchanges, ~20 Sonnet agent invocations. Most will find nothing and exit quickly.
+- **Stop passive sweep (Sonnet):** Runs on every response. Cost proportional to session length. For a typical session with 20 exchanges, ~20 Sonnet agent invocations. Each invocation requires reading and reasoning about the transcript even when finding nothing, so "exit quickly" still means a few seconds of Sonnet compute per exchange. Monitor cost after initial deployment; consider adding a cooldown or minimum transcript length threshold if excessive.
 - **PostToolUse capture (Opus):** Only runs when Claude explicitly calls `vault_capture`. Expect 1-5 per significant session. Higher per-invocation cost but very low frequency.
 
 ## Testing Strategy
 
-1. **session-start.js unit tests:** Test project resolution logic (basename match, CLAUDE.md fallback, error case) with mock vault directories
-2. **vault_capture handler tests:** Test input validation, response format
-3. **Integration tests:** Manual testing with a real vault — verify SessionStart injects context, Stop writes captures, vault_capture triggers background agent
-4. **Hook config validation:** Verify the JSON config is accepted by Claude Code's hook system
+### Phase 0: Proof-of-Concept (Must Pass Before Implementation)
+
+Build a minimal test hook that validates all three critical assumptions:
+
+1. **Test A1 (async agent hooks):** Create a PostToolUse agent hook with `async: true` on a dummy MCP tool. Verify Claude continues immediately without waiting for the agent to complete. Confirm with timing measurements.
+2. **Test A2 (MCP tool access):** In the same agent hook, have the agent call an MCP tool (e.g., `vault_list`). Verify the call succeeds and the agent can read the response.
+3. **Test A3 ($ARGUMENTS injection):** Include `$ARGUMENTS` in the agent prompt. Log the received value to a temp file. Verify it contains the expected hook input JSON with `tool_input`, `tool_name`, etc.
+
+If any test fails, implement the corresponding fallback from the "Fallback Plan" section before proceeding.
+
+### Phase 1: Unit Tests
+
+4. **session-start.js unit tests:** Test project resolution logic (basename match, CLAUDE.md fallback, error case) with mock vault directories
+5. **vault_capture handler tests:** Test response format, activity logging
+
+### Phase 2: Integration Tests
+
+6. **SessionStart integration:** Manual test — start a new session in a repo with a matching vault project. Verify context appears in Claude's initial context.
+7. **Stop passive sweep:** Have a conversation with a clear decision. Check `00-Inbox/captures-*.md` for the capture.
+8. **vault_capture + PostToolUse:** Call vault_capture explicitly. Verify the structured note appears in the correct vault project folder.
+9. **Deduplication:** Call vault_capture in a response that also contains a decision. Verify the Stop sweep does not duplicate the explicit capture.
+10. **Hook config validation:** Verify the JSON config is accepted by Claude Code's hook system (`/hooks` command)
 
 ## Open Questions
 
