@@ -59,4 +59,22 @@ describe("resolveProject", () => {
     const result = await resolveProject(cwdPath, vaultPath);
     assert.equal(result.projectPath, "01-Projects/Obsidian-MCP");
   });
+
+  it("rejects CLAUDE.md annotation that escapes vault", async () => {
+    const cwdPath = path.join(tmpDir, "evil-repo");
+    await fs.mkdir(cwdPath, { recursive: true });
+    await fs.writeFile(path.join(cwdPath, "CLAUDE.md"), "# PKM: ../../etc/passwd\n");
+    const result = await resolveProject(cwdPath, vaultPath);
+    assert.equal(result.projectPath, undefined);
+    assert.ok(result.error.includes("escapes vault"));
+  });
+
+  it("returns error when CLAUDE.md annotation points to non-existent path", async () => {
+    const cwdPath = path.join(tmpDir, "missing-path-repo");
+    await fs.mkdir(cwdPath, { recursive: true });
+    await fs.writeFile(path.join(cwdPath, "CLAUDE.md"), "# PKM: 01-Projects/DoesNotExist\n");
+    const result = await resolveProject(cwdPath, vaultPath);
+    assert.equal(result.projectPath, undefined);
+    assert.ok(result.error.includes("non-existent"));
+  });
 });

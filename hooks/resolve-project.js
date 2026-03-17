@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import { resolvePath } from "../helpers.js";
 
 export async function resolveProject(cwd, vaultPath) {
   try {
@@ -18,7 +19,10 @@ export async function resolveProject(cwd, vaultPath) {
         return { projectPath: `01-Projects/${entry.name}` };
       }
     }
-  } catch {
+  } catch (e) {
+    if (e.code !== "ENOENT") {
+      return { error: `Error reading 01-Projects/: ${e.message}` };
+    }
     // 01-Projects/ doesn't exist -- fall through to CLAUDE.md check
   }
 
@@ -28,13 +32,24 @@ export async function resolveProject(cwd, vaultPath) {
     if (match) {
       const annotatedPath = match[1].trim();
       try {
+        resolvePath(annotatedPath, vaultPath);
+      } catch (e) {
+        if (e.message === "Path escapes vault directory") {
+          return { error: `CLAUDE.md annotation escapes vault directory: ${annotatedPath}` };
+        }
+        throw e;
+      }
+      try {
         await fs.access(path.join(vaultPath, annotatedPath));
         return { projectPath: annotatedPath };
       } catch {
         return { error: `CLAUDE.md annotation points to non-existent vault path: ${annotatedPath}` };
       }
     }
-  } catch {
+  } catch (e) {
+    if (e.code !== "ENOENT" && e.code !== "EACCES") {
+      return { error: `Error reading CLAUDE.md: ${e.message}` };
+    }
     // No CLAUDE.md or not readable -- fall through
   }
 

@@ -78,4 +78,17 @@ describe("loadProjectContext", () => {
     const ctx = await loadProjectContext(vaultPath, projectPath);
     assert.ok(ctx.includes("No active tasks"));
   });
+
+  it("handles task file without frontmatter gracefully", async () => {
+    const projectDir = path.join(vaultPath, projectPath);
+    await fs.writeFile(
+      path.join(projectDir, "tasks", "no-frontmatter.md"),
+      "# Some Task\n\nNo frontmatter here."
+    );
+    const ctx = await loadProjectContext(vaultPath, projectPath);
+    // Should not crash, and should still include the auth task
+    assert.ok(ctx.includes("Add Authentication"));
+    // The no-frontmatter task should be skipped (extractFrontmatter returns null, so fm.status check fails)
+    assert.ok(!ctx.includes("Some Task"));
+  });
 });

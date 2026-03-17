@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PostToolUse hook: explicit PKM capture via vault_capture tool
-# Runs async after vault_capture returns. Spawns claude -p with Opus
+# Runs async after vault_capture returns. Spawns claude -p with Sonnet
 # to create a properly structured vault note.
 
 set -euo pipefail
@@ -18,56 +18,56 @@ CAPTURE_PROJECT=$(echo "$TOOL_INPUT" | node -e "process.stdin.on('data',d=>{cons
 
 # Skip if missing required fields
 if [ -z "$CAPTURE_TYPE" ] || [ -z "$CAPTURE_TITLE" ] || [ -z "$CAPTURE_CONTENT" ]; then
+  echo "capture-handler: skipping - missing required fields (type='$CAPTURE_TYPE')" >&2
   exit 0
 fi
 
 # MCP config for obsidian-pkm server
-SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
-MCP_CONFIG='{"mcpServers":{"obsidian-pkm":{"command":"node","args":["'"${SCRIPT_DIR}/../index.js"'"],"env":{"VAULT_PATH":"'"${VAULT_PATH:-$HOME/Documents/PKM}"'"}}}}'
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
+MCP_CONFIG=$(node -e "console.log(JSON.stringify({mcpServers:{'obsidian-pkm':{command:'node',args:[process.argv[1]],env:{VAULT_PATH:process.argv[2]}}}}))" "$SCRIPT_DIR/../index.js" "${VAULT_PATH:-$HOME/Documents/PKM}")
 
-# Build project context for prompt
-PROJECT_HINT=""
-if [ -n "$CAPTURE_PROJECT" ]; then
-  PROJECT_HINT="The project is: $CAPTURE_PROJECT"
-else
-  PROJECT_HINT="The project is not specified. Check vault_activity recent entries to infer the active project."
-fi
+LOG_DIR="${VAULT_PATH:?}/.obsidian/hook-logs"
+mkdir -p "$LOG_DIR"
 
-PROMPT="You are a PKM note creation agent. A Claude Code session has explicitly signaled that something is worth capturing.
+# Build prompt via Node.js to avoid shell injection from user content
+PROMPT_FILE=$(mktemp)
+node -e "
+const ti = JSON.parse(process.argv[1]);
+const project = ti.project
+  ? 'The project is: ' + ti.project
+  : 'The project is not specified. Check vault_activity recent entries to infer the active project.';
+const prompt = \`You are a PKM note creation agent. Your job is NOT done until the note has real content — not template placeholders.
 
-## Capture Details
+## What to capture
 
-- Type: $CAPTURE_TYPE
-- Title: $CAPTURE_TITLE
-- Content: $CAPTURE_CONTENT
-- Priority: $CAPTURE_PRIORITY
-- $PROJECT_HINT
+- Type: \${ti.type}
+- Title: \${ti.title}
+- Content: \${ti.content}
+- Priority: \${ti.priority || 'normal'}
+- \${project}
 
-## Instructions
+## Required steps (you must do ALL of these)
 
-You MUST complete TWO steps — creating the note AND filling in its content.
+1. Create the note with vault_write using the appropriate template:
+   - research → template 'research-note', path: 01-Projects/{project}/research/{kebab-title}.md
+   - adr → template 'adr', path: 01-Projects/{project}/development/decisions/ADR-NNN-{kebab-title}.md (use vault_list to get next number)
+   - task → template 'task', path: 01-Projects/{project}/tasks/{kebab-title}.md (vault_query first to check for duplicates)
+   - bug → template 'troubleshooting-log', path: 01-Projects/{project}/development/debug/{kebab-title}.md
+   If vault_write fails because the file exists, use a different filename.
 
-### Step 1: Create the note from template
+2. Read the created note with vault_read.
 
-- **adr**: vault_write with template 'adr'. Path: 01-Projects/{project}/development/decisions/ADR-NNN-{kebab-title}.md. List existing ADRs with vault_list to determine next number.
-- **task**: First vault_query to check for existing task with similar title. If exists, vault_update_frontmatter to update and stop. If not, vault_write with template 'task'. Path: 01-Projects/{project}/tasks/{kebab-title}.md.
-- **research**: vault_write with template 'research-note'. Path: 01-Projects/{project}/research/{kebab-title}.md.
-- **bug**: vault_write with template 'troubleshooting-log'. Path: 01-Projects/{project}/development/debug/{kebab-title}.md.
+3. Use vault_edit to replace EVERY template placeholder with real content derived from the Title and Content above. For example, replace 'Brief description of the technology, tool, or concept.' with an actual description. Do this for EACH section — you will need multiple vault_edit calls.
 
-If vault_write fails (e.g., file exists), adapt — use vault_append or choose a different filename.
+4. Read the note one final time to confirm no placeholder text remains.
 
-### Step 2: Replace template placeholders with real content
+CRITICAL: If you stop after step 1 or 2, you have FAILED. The note will contain useless placeholder text like 'Brief description of the technology, tool, or concept.' which is worse than no note at all. You MUST reach step 4.\`;
+require('fs').writeFileSync(process.argv[2], prompt);
+" "$TOOL_INPUT" "$PROMPT_FILE"
 
-After creating the note, use vault_edit to replace EACH template placeholder section with content expanded from the Capture Details above. The template will contain generic text like 'Brief description of the technology, tool, or concept.' — you must replace these with substantive content derived from the Title and Content fields.
+# Spawn claude -p in background with logging
+nohup claude -p --model sonnet --mcp-config "$MCP_CONFIG" --max-turns 25 --allowedTools "mcp__obsidian-pkm__vault_write mcp__obsidian-pkm__vault_read mcp__obsidian-pkm__vault_edit mcp__obsidian-pkm__vault_append mcp__obsidian-pkm__vault_query mcp__obsidian-pkm__vault_list mcp__obsidian-pkm__vault_update_frontmatter mcp__obsidian-pkm__vault_activity" < "$PROMPT_FILE" >> "$LOG_DIR/capture-$(date +%Y%m%d-%H%M%S).log" 2>&1 &
 
-For research notes, fill in: What It Is, Why Consider It, Pros, Cons, and Verdict.
-For ADRs, fill in: Context, Decision, Options Considered, and Consequences.
-For bugs, fill in: Problem, Symptoms, Root Cause, Solution, and Prevention.
-For tasks, fill in: Description, Context, and Acceptance Criteria.
-
-Do NOT leave any template placeholder text in the final note. Every section must contain real content or be removed if not applicable."
-
-# Spawn claude -p in background (detached, no stdin/stdout)
-echo "$PROMPT" | nohup claude -p --model sonnet --mcp-config "$MCP_CONFIG" --max-turns 10 > /dev/null 2>&1 &
+rm -f "$PROMPT_FILE"
 
 exit 0

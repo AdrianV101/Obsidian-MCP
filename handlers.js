@@ -849,7 +849,12 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
   }
 
   async function handleCapture(args) {
-    const { type, title } = args;
+    const { type, title, content } = args;
+    if (!type || !title || !content) {
+      throw new Error(
+        `vault_capture requires type, title, and content. Got: type=${type || "(missing)"}, title=${title || "(missing)"}, content=${content ? "provided" : "(missing)"}`
+      );
+    }
     return {
       content: [{
         type: "text",

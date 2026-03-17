@@ -52,4 +52,28 @@ describe("vault_capture handler", () => {
       assert.ok(result.content[0].text.includes(`[${type}]`));
     }
   });
+
+  it("throws when type is missing", async () => {
+    const handler = handlers.get("vault_capture");
+    await assert.rejects(
+      () => handler({ title: "T", content: "C" }),
+      { message: /type=\(missing\)/ }
+    );
+  });
+
+  it("throws when title is missing", async () => {
+    const handler = handlers.get("vault_capture");
+    await assert.rejects(
+      () => handler({ type: "adr", content: "C" }),
+      { message: /title=\(missing\)/ }
+    );
+  });
+
+  it("throws when content is missing", async () => {
+    const handler = handlers.get("vault_capture");
+    await assert.rejects(
+      () => handler({ type: "adr", title: "T" }),
+      { message: /content=\(missing\)/ }
+    );
+  });
 });

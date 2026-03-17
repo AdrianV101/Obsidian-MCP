@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Stop hook: passive PKM capture sweep
-# Runs async after each Claude response. Spawns claude -p with Sonnet
+# Runs async after each Claude response. Spawns claude -p with Haiku
 # to analyze the transcript and capture decisions/tasks/findings.
 
 set -euo pipefail
@@ -18,8 +18,11 @@ if [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ]; then
 fi
 
 # MCP config for obsidian-pkm server
-SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
-MCP_CONFIG='{"mcpServers":{"obsidian-pkm":{"command":"node","args":["'"${SCRIPT_DIR}/../index.js"'"],"env":{"VAULT_PATH":"'"${VAULT_PATH:-$HOME/Documents/PKM}"'"}}}}'
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
+MCP_CONFIG=$(node -e "console.log(JSON.stringify({mcpServers:{'obsidian-pkm':{command:'node',args:[process.argv[1]],env:{VAULT_PATH:process.argv[2]}}}}))" "$SCRIPT_DIR/../index.js" "${VAULT_PATH:-$HOME/Documents/PKM}")
+
+LOG_DIR="${VAULT_PATH:?}/.obsidian/hook-logs"
+mkdir -p "$LOG_DIR"
 
 PROJECT_NAME=$(basename "$CWD")
 SESSION_SHORT=$(echo "$SESSION_ID" | cut -c1-8)
@@ -64,6 +67,6 @@ If you find PKM-worthy content, use vault_append to add entries to 00-Inbox/capt
 If nothing is PKM-worthy, do nothing."
 
 # Spawn claude -p in background (detached, no stdin/stdout)
-echo "$PROMPT" | nohup claude -p --model haiku --mcp-config "$MCP_CONFIG" --max-turns 5 > /dev/null 2>&1 &
+echo "$PROMPT" | nohup claude -p --model haiku --mcp-config "$MCP_CONFIG" --max-turns 5 >> "$LOG_DIR/sweep-$(date +%Y%m%d-%H%M%S).log" 2>&1 &
 
 exit 0

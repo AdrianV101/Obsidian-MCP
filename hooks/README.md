@@ -85,11 +85,11 @@ The hook system uses `type: "command"` hooks (not `type: "agent"`). The shell sc
 
 - The hook script exits immediately, satisfying the timeout constraint
 - The `claude -p` process continues running independently, doing the actual vault work
-- `--max-turns` limits how many tool calls the background process can make (5 for stop-sweep, 10 for capture-handler)
+- `--max-turns` limits how many tool calls the background process can make (5 for stop-sweep, 25 for capture-handler)
 
 ### MCP config resolution
 
-The shell scripts use `readlink -f "$0"` to resolve their own location, then construct the path to `index.js` relative to the script directory. This means the scripts work regardless of the current working directory. The `VAULT_PATH` environment variable must be set in the hook command because hook scripts run outside the MCP server process.
+The shell scripts use `cd "$(dirname "$0")" && pwd -P` to resolve their own location, then construct the path to `index.js` relative to the script directory. This means the scripts work regardless of the current working directory. The `VAULT_PATH` environment variable must be set in the hook command because hook scripts run outside the MCP server process.
 
 ### Async behavior
 
@@ -118,8 +118,8 @@ The stop-sweep hook is conservative by design. It only looks at the last exchang
 - Check for `claude` CLI in PATH
 - Look for `claude -p` processes: `ps aux | grep 'claude -p'`
 - Test `claude -p` directly: `echo "say hello" | claude -p --model sonnet`
-- Check `nohup.out` in the working directory for errors (though output is redirected to `/dev/null`)
+- Check logs in `$VAULT_PATH/.obsidian/hook-logs/` for background process output
 
 ### macOS compatibility
 
-The scripts use `readlink -f`, which requires GNU coreutils on macOS. Install via: `brew install coreutils`. Alternatively, replace `readlink -f` with `realpath` or a POSIX-compatible equivalent.
+The scripts use POSIX-compatible `cd "$(dirname "$0")" && pwd -P` for path resolution, so they work on both Linux and macOS without additional dependencies.

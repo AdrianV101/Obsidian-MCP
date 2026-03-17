@@ -15,7 +15,13 @@ async function main() {
   try {
     input = JSON.parse(inputJson);
   } catch {
-    console.log("PKM hook error: could not parse hook input JSON.");
+    const output = {
+      hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext: "PKM hook error: could not parse hook input JSON."
+      }
+    };
+    console.log(JSON.stringify(output));
     process.exit(0);
   }
 
@@ -45,7 +51,19 @@ async function main() {
     process.exit(0);
   }
 
-  const context = await loadProjectContext(VAULT_PATH, projectPath);
+  let context;
+  try {
+    context = await loadProjectContext(VAULT_PATH, projectPath);
+  } catch (e) {
+    const output = {
+      hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext: `PKM hook error: failed to load project context: ${e.message}`
+      }
+    };
+    console.log(JSON.stringify(output));
+    process.exit(0);
+  }
 
   const output = {
     hookSpecificOutput: {

@@ -13,8 +13,8 @@ export async function loadProjectContext(vaultPath, projectPath) {
   try {
     const indexContent = await fs.readFile(path.join(projectDir, "_index.md"), "utf-8");
     sections.push(`### Project Index\n${indexContent}`);
-  } catch {
-    // Missing -- skip
+  } catch (e) {
+    if (e.code !== "ENOENT") console.error("PKM load-context: error reading _index.md:", e.message);
   }
 
   try {
@@ -23,8 +23,8 @@ export async function loadProjectContext(vaultPath, projectPath) {
     );
     const tailSections = extractTailSections(devlogContent, 3, 2);
     sections.push(`### Recent Development Activity\n${tailSections}`);
-  } catch {
-    // Missing -- skip
+  } catch (e) {
+    if (e.code !== "ENOENT") console.error("PKM load-context: error reading devlog:", e.message);
   }
 
   const tasks = [];
@@ -50,8 +50,8 @@ export async function loadProjectContext(vaultPath, projectPath) {
 
       tasks.push(`- ${title} (status: ${fm.status}, priority: ${fm.priority || "normal"})\n${descLines}`);
     }
-  } catch {
-    // Missing tasks dir -- skip
+  } catch (e) {
+    if (e.code !== "ENOENT") console.error("PKM load-context: error reading tasks:", e.message);
   }
 
   if (tasks.length > 0) {
