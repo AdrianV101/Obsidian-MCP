@@ -27,6 +27,17 @@ async function main() {
 
   const { cwd } = input;
 
+  if (!cwd || typeof cwd !== "string") {
+    const output = {
+      hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext: "PKM hook error: hook input missing 'cwd' field."
+      }
+    };
+    console.log(JSON.stringify(output));
+    process.exit(0);
+  }
+
   if (!VAULT_PATH) {
     const output = {
       hookSpecificOutput: {

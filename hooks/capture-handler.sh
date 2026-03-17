@@ -5,16 +5,29 @@
 
 set -euo pipefail
 
+LOG_DIR="${VAULT_PATH:?}/.obsidian/hook-logs"
+mkdir -p "$LOG_DIR"
+PROMPT_FILE=""
+cleanup() { [ -n "$PROMPT_FILE" ] && rm -f "$PROMPT_FILE"; }
+trap 'echo "capture-handler: failed at line $LINENO" >> "$LOG_DIR/capture-errors.log"; cleanup' ERR
+trap cleanup EXIT
+
 # Read hook input from stdin
 INPUT=$(cat)
 
-# Extract tool_input fields
-TOOL_INPUT=$(echo "$INPUT" | node -e "process.stdin.on('data',d=>{const j=JSON.parse(d);console.log(JSON.stringify(j.tool_input||{}))})")
-CAPTURE_TYPE=$(echo "$TOOL_INPUT" | node -e "process.stdin.on('data',d=>{const j=JSON.parse(d);console.log(j.type||'')})")
-CAPTURE_TITLE=$(echo "$TOOL_INPUT" | node -e "process.stdin.on('data',d=>{const j=JSON.parse(d);console.log(j.title||'')})")
-CAPTURE_CONTENT=$(echo "$TOOL_INPUT" | node -e "process.stdin.on('data',d=>{const j=JSON.parse(d);console.log(j.content||'')})")
-CAPTURE_PRIORITY=$(echo "$TOOL_INPUT" | node -e "process.stdin.on('data',d=>{const j=JSON.parse(d);console.log(j.priority||'normal')})")
-CAPTURE_PROJECT=$(echo "$TOOL_INPUT" | node -e "process.stdin.on('data',d=>{const j=JSON.parse(d);console.log(j.project||'')})")
+# Extract tool_input fields (buffer all stdin before parsing)
+eval "$(echo "$INPUT" | node -e "
+  let b='';
+  process.stdin.on('data',c=>b+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(b);
+    const ti=j.tool_input||{};
+    console.log('TOOL_INPUT='+JSON.stringify(JSON.stringify(ti)));
+    console.log('CAPTURE_TYPE='+JSON.stringify(ti.type||''));
+    console.log('CAPTURE_TITLE='+JSON.stringify(ti.title||''));
+    console.log('CAPTURE_CONTENT='+JSON.stringify(ti.content||''));
+  })
+")"
 
 # Skip if missing required fields
 if [ -z "$CAPTURE_TYPE" ] || [ -z "$CAPTURE_TITLE" ] || [ -z "$CAPTURE_CONTENT" ]; then
@@ -25,9 +38,6 @@ fi
 # MCP config for obsidian-pkm server
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 MCP_CONFIG=$(node -e "console.log(JSON.stringify({mcpServers:{'obsidian-pkm':{command:'node',args:[process.argv[1]],env:{VAULT_PATH:process.argv[2]}}}}))" "$SCRIPT_DIR/../index.js" "${VAULT_PATH:-$HOME/Documents/PKM}")
-
-LOG_DIR="${VAULT_PATH:?}/.obsidian/hook-logs"
-mkdir -p "$LOG_DIR"
 
 # Build prompt via Node.js to avoid shell injection from user content
 PROMPT_FILE=$(mktemp)
@@ -67,7 +77,5 @@ require('fs').writeFileSync(process.argv[2], prompt);
 
 # Spawn claude -p in background with logging
 nohup claude -p --model sonnet --mcp-config "$MCP_CONFIG" --max-turns 25 --allowedTools "mcp__obsidian-pkm__vault_write mcp__obsidian-pkm__vault_read mcp__obsidian-pkm__vault_edit mcp__obsidian-pkm__vault_append mcp__obsidian-pkm__vault_query mcp__obsidian-pkm__vault_list mcp__obsidian-pkm__vault_update_frontmatter mcp__obsidian-pkm__vault_activity" < "$PROMPT_FILE" >> "$LOG_DIR/capture-$(date +%Y%m%d-%H%M%S).log" 2>&1 &
-
-rm -f "$PROMPT_FILE"
 
 exit 0

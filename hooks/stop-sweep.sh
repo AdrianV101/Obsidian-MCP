@@ -5,24 +5,33 @@
 
 set -euo pipefail
 
+LOG_DIR="${VAULT_PATH:?}/.obsidian/hook-logs"
+mkdir -p "$LOG_DIR"
+trap 'echo "stop-sweep: failed at line $LINENO" >> "$LOG_DIR/sweep-errors.log"' ERR
+
 # Read hook input from stdin
 INPUT=$(cat)
 
-TRANSCRIPT_PATH=$(echo "$INPUT" | node -e "process.stdin.on('data',d=>{const j=JSON.parse(d);console.log(j.transcript_path||'')})")
-SESSION_ID=$(echo "$INPUT" | node -e "process.stdin.on('data',d=>{const j=JSON.parse(d);console.log(j.session_id||'')})")
-CWD=$(echo "$INPUT" | node -e "process.stdin.on('data',d=>{const j=JSON.parse(d);console.log(j.cwd||'')})")
+eval "$(echo "$INPUT" | node -e "
+  let b='';
+  process.stdin.on('data',c=>b+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(b);
+    console.log('TRANSCRIPT_PATH='+JSON.stringify(j.transcript_path||''));
+    console.log('SESSION_ID='+JSON.stringify(j.session_id||''));
+    console.log('CWD='+JSON.stringify(j.cwd||''));
+  })
+")"
 
 # Skip if no transcript
 if [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ]; then
+  echo "stop-sweep: skipping - transcript_path empty or missing ('$TRANSCRIPT_PATH')" >&2
   exit 0
 fi
 
 # MCP config for obsidian-pkm server
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 MCP_CONFIG=$(node -e "console.log(JSON.stringify({mcpServers:{'obsidian-pkm':{command:'node',args:[process.argv[1]],env:{VAULT_PATH:process.argv[2]}}}}))" "$SCRIPT_DIR/../index.js" "${VAULT_PATH:-$HOME/Documents/PKM}")
-
-LOG_DIR="${VAULT_PATH:?}/.obsidian/hook-logs"
-mkdir -p "$LOG_DIR"
 
 PROJECT_NAME=$(basename "$CWD")
 SESSION_SHORT=$(echo "$SESSION_ID" | cut -c1-8)
@@ -66,7 +75,7 @@ If you find PKM-worthy content, use vault_append to add entries to 00-Inbox/capt
 
 If nothing is PKM-worthy, do nothing."
 
-# Spawn claude -p in background (detached, no stdin/stdout)
-echo "$PROMPT" | nohup claude -p --model haiku --mcp-config "$MCP_CONFIG" --max-turns 5 >> "$LOG_DIR/sweep-$(date +%Y%m%d-%H%M%S).log" 2>&1 &
+# Spawn claude -p in background with logging
+echo "$PROMPT" | nohup claude -p --model haiku --mcp-config "$MCP_CONFIG" --max-turns 5 --allowedTools "mcp__obsidian-pkm__vault_write mcp__obsidian-pkm__vault_append mcp__obsidian-pkm__vault_read" >> "$LOG_DIR/sweep-$(date +%Y%m%d-%H%M%S).log" 2>&1 &
 
 exit 0

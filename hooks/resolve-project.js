@@ -5,8 +5,11 @@ import { resolvePath } from "../helpers.js";
 export async function resolveProject(cwd, vaultPath) {
   try {
     await fs.access(vaultPath);
-  } catch {
-    return { error: `VAULT_PATH does not exist: ${vaultPath}` };
+  } catch (e) {
+    if (e.code === "ENOENT") {
+      return { error: `VAULT_PATH does not exist: ${vaultPath}` };
+    }
+    return { error: `Cannot access VAULT_PATH (${e.code}): ${vaultPath}` };
   }
 
   const projectsDir = path.join(vaultPath, "01-Projects");
@@ -42,8 +45,11 @@ export async function resolveProject(cwd, vaultPath) {
       try {
         await fs.access(path.join(vaultPath, annotatedPath));
         return { projectPath: annotatedPath };
-      } catch {
-        return { error: `CLAUDE.md annotation points to non-existent vault path: ${annotatedPath}` };
+      } catch (e) {
+        if (e.code === "ENOENT") {
+          return { error: `CLAUDE.md annotation points to non-existent vault path: ${annotatedPath}` };
+        }
+        return { error: `Cannot access annotated vault path (${e.code}): ${annotatedPath}` };
       }
     }
   } catch (e) {
