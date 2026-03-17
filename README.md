@@ -148,6 +148,67 @@ Add your OpenAI API key to the env block:
 
 This enables `vault_semantic_search` and `vault_suggest_links`. Uses `text-embedding-3-large` with a SQLite + sqlite-vec index stored at `.obsidian/semantic-index.db`. The index rebuilds automatically — delete the DB file to force a full re-embed.
 
+### 4. Enable PKM Hooks (optional)
+
+The hook system adds automatic context loading at session start and passive knowledge capture during coding. Requires the [Claude CLI](https://docs.anthropic.com/en/docs/claude-cli) installed and authenticated.
+
+Add to your `~/.claude/settings.json` (alongside the `mcpServers` block):
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "VAULT_PATH=\"/path/to/your/vault\" node /path/to/Obsidian-MCP/hooks/session-start.js",
+            "timeout": 15,
+            "statusMessage": "Loading PKM project context..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "VAULT_PATH=\"/path/to/your/vault\" /path/to/Obsidian-MCP/hooks/stop-sweep.sh",
+            "async": true,
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__obsidian-pkm__vault_capture",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "VAULT_PATH=\"/path/to/your/vault\" /path/to/Obsidian-MCP/hooks/capture-handler.sh",
+            "async": true,
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Replace `/path/to/your/vault` with your Obsidian vault path and `/path/to/Obsidian-MCP` with the path to this repo (or the global npm install location).
+
+| Hook | Event | What it does |
+|------|-------|--------------|
+| `session-start.js` | SessionStart | Loads project context (index, devlog, active tasks) at session start |
+| `stop-sweep.sh` | Stop | Scans each exchange for PKM-worthy decisions/tasks, appends to daily captures |
+| `capture-handler.sh` | PostToolUse | Creates structured vault notes when `vault_capture` is called |
+
+See [hooks/README.md](hooks/README.md) for architecture details and troubleshooting.
+
 ## Vault Structure
 
 The server works with any Obsidian vault. The included templates assume this layout:
@@ -203,6 +264,7 @@ graph LR
 ├── embeddings.js     # Semantic index (OpenAI embeddings, SQLite + sqlite-vec)
 ├── activity.js       # Activity log (session tracking, SQLite)
 ├── utils.js          # Shared utilities (frontmatter parsing, file listing)
+├── hooks/            # Claude Code hooks (session context, passive capture)
 ├── templates/        # Obsidian note templates
 └── sample-project/   # Sample CLAUDE.md for your repos
 ```
