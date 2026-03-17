@@ -9,6 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [1.2.0] - 2026-03-17
 
 ### Added
+- `vault_capture` tool — signal a PKM-worthy capture (decision, task, research, bug); returns immediately while a background hook creates the note
+- PKM hook scripts for Claude Code integration:
+  - SessionStart hook (`session-start.js`) — loads project context from vault automatically
+  - PostToolUse hook (`capture-handler.sh`) — spawns Sonnet agent for explicit `vault_capture` calls
+  - Stop hook (`stop-sweep.sh`) — spawns Haiku agent for passive decision/task sweep at session end
 - Enum validation for task `status` (pending/active/done/cancelled) and `priority` (low/normal/high/urgent) fields in `vault_write` and `vault_update_frontmatter` — non-task note types are unaffected
 
 ### Changed

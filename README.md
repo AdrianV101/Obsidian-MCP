@@ -36,12 +36,12 @@ https://github.com/user-attachments/assets/58ad9c9b-d987-4728-89e7-33de20b73a38
 | `vault_recent` | Recently modified files |
 | `vault_links` | Wikilink analysis (incoming/outgoing) |
 | `vault_neighborhood` | Graph exploration via BFS wikilink traversal |
-| `vault_query` | Query notes by YAML frontmatter (type, status, tags, dates, custom fields, sorting) |
+| `vault_query` | Query notes by YAML frontmatter (type, status, tags/tags_any, dates, custom fields, sorting) |
 | `vault_tags` | Discover tags with counts; folder scoping, glob filters, inline tag parsing |
 | `vault_activity` | Session activity log for cross-conversation memory |
 | `vault_trash` | Soft-delete to `.trash/` (Obsidian convention), warns about broken incoming links |
 | `vault_move` | Move/rename files with automatic wikilink updating across vault |
-| `vault_update_frontmatter` | Atomic YAML frontmatter updates (set, create, remove fields) |
+| `vault_update_frontmatter` | Atomic YAML frontmatter updates (set, create, remove fields; validates enum fields by note type) |
 
 ### Fuzzy Path Resolution
 
@@ -211,7 +211,7 @@ All paths passed to tools are relative to vault root. The server includes path s
 
 ## How It Works
 
-**Note creation** is template-based. `vault_write` loads templates from `05-Templates/`, substitutes Templater-compatible variables (`<% tp.date.now("YYYY-MM-DD") %>`, `<% tp.file.title %>`), and validates required frontmatter fields (`type`, `created`, `tags`).
+**Note creation** is template-based. `vault_write` loads templates from `05-Templates/`, substitutes Templater-compatible variables (`<% tp.date.now("YYYY-MM-DD") %>`, `<% tp.file.title %>`), and validates required frontmatter fields (`type`, `created`, `tags`). Optional frontmatter fields — `status`, `priority`, `project`, `deciders`, `due`, `source` — can be set per template type. Task notes enforce enum validation on `status` (pending/active/done/cancelled) and `priority` (low/normal/high/urgent).
 
 **Semantic search** embeds notes on startup and watches for changes via `fs.watch`. Long notes are chunked by `##` headings. The index is a regenerable cache stored in `.obsidian/` so it syncs across machines via Obsidian Sync. The initial sync runs in the background — search is available immediately but may return incomplete results until sync finishes (a progress message is shown).
 
