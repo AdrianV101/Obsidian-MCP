@@ -38,7 +38,7 @@ tags: []
 ### Modified Files
 
 **`index.js`** — Wrap all code in an exported `startServer()` function so nothing executes on import. Specifically:
-- All module-level declarations (`VAULT_PATH`, `templateRegistry`, `semanticIndex`, `activityLog`, `SESSION_ID`, `handlers`, `server`) become local variables inside `startServer()`
+- All module-level declarations (`VAULT_PATH`, `templateRegistry`, `templateDescriptions`, `semanticIndex`, `activityLog`, `SESSION_ID`, `handlers`, `server`) become local variables inside `startServer()`. Note: `shuttingDown` (used by the `shutdown()` inner function) must also move inside.
 - The `server.setRequestHandler(...)` registrations move inside `startServer()`
 - `initializeServer()` and `shutdown()` become inner functions of `startServer()`
 - Signal handlers (`process.on("SIGINT", ...)`, `process.on("SIGTERM", ...)`) register inside `startServer()`
@@ -239,7 +239,7 @@ Confirm before writing. `OPENAI_API_KEY` is only included if the user provided o
 Setup complete!
 
   Vault:      /home/user/Documents/PKM
-  Templates:  12 installed in 05-Templates/
+  Templates:  13 installed in 05-Templates/
   Folders:    7 created (00-Inbox through 06-System)
   Semantic:   Enabled (API key configured)
   Claude Code: Registered in ~/.claude/settings.json
@@ -291,8 +291,11 @@ const subcommand = process.argv[2];
 if (subcommand === "init") {
   const { runInit } = await import("./init.js");
   await runInit();
-} else if (!subcommand || subcommand === "--version" || subcommand === "-v") {
-  // No subcommand: start MCP server. --version/--help handled here too (future).
+} else if (subcommand === "--version" || subcommand === "-v") {
+  const { createRequire } = await import("module");
+  const { version } = createRequire(import.meta.url)("./package.json");
+  console.log(`pkm-mcp-server v${version}`);
+} else if (!subcommand) {
   const { startServer } = await import("./index.js");
   await startServer();
 } else {
