@@ -86,7 +86,7 @@ export async function copyTemplates(src, dest, mode) {
 
   const files = mode === "minimal"
     ? ["note.md"]
-    : await fs.readdir(src);
+    : (await fs.readdir(src)).filter(f => f.endsWith(".md"));
 
   let created = 0, skipped = 0;
 
@@ -414,7 +414,7 @@ If that doesn't work, check: https://github.com/AdrianV101/Obsidian-MCP#troubles
 `);
   } catch (e) {
     if (e.name === "ExitPromptError") {
-      console.log("\nSetup cancelled. Nothing was changed.");
+      console.log("\nSetup cancelled.");
       return;
     }
     console.error(`\nError: ${e.message}`);
