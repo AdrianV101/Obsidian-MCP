@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import os from "os";
 import path from "path";
 import fs from "fs/promises";
-import { resolveInputPath, copyTemplates } from "../init.js";
+import { resolveInputPath, copyTemplates, scaffoldFolders } from "../init.js";
 
 describe("resolveInputPath", () => {
   it("expands ~ to home directory", () => {
@@ -104,5 +104,46 @@ describe("copyTemplates", () => {
       copyTemplates("/nonexistent/templates", dest, "full"),
       (err) => err.code === "ENOENT"
     );
+  });
+});
+
+describe("scaffoldFolders", () => {
+  let tmpDir;
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "init-scaffold-"));
+  });
+
+  it("creates all 7 PARA folders with _index.md stubs", async () => {
+    const result = await scaffoldFolders(tmpDir);
+    assert.equal(result.created, 7);
+    assert.equal(result.skipped, 0);
+    const dirs = await fs.readdir(tmpDir);
+    assert.ok(dirs.includes("00-Inbox"));
+    assert.ok(dirs.includes("06-System"));
+    // Check _index.md has frontmatter
+    const content = await fs.readFile(path.join(tmpDir, "00-Inbox", "_index.md"), "utf8");
+    assert.ok(content.includes("type: moc"));
+    assert.ok(content.includes("tags:"));
+    assert.ok(content.includes("# Inbox"));
+  });
+
+  it("creates _index.md in existing folders that lack one", async () => {
+    await fs.mkdir(path.join(tmpDir, "00-Inbox"), { recursive: true });
+    const result = await scaffoldFolders(tmpDir);
+    // created/skipped counts _index.md files only (folders are created idempotently via mkdir recursive)
+    assert.equal(result.created, 7);
+    assert.equal(result.skipped, 0);
+    const indexContent = await fs.readFile(path.join(tmpDir, "00-Inbox", "_index.md"), "utf8");
+    assert.ok(indexContent.includes("type: moc"));
+  });
+
+  it("skips existing _index.md files without overwriting", async () => {
+    await fs.mkdir(path.join(tmpDir, "00-Inbox"), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, "00-Inbox", "_index.md"), "# My custom index");
+    const result = await scaffoldFolders(tmpDir);
+    assert.ok(result.skipped >= 1);
+    const content = await fs.readFile(path.join(tmpDir, "00-Inbox", "_index.md"), "utf8");
+    assert.equal(content, "# My custom index");
   });
 });

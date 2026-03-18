@@ -31,6 +31,46 @@ export function resolveInputPath(raw) {
   return p;
 }
 
+const PARA_FOLDERS = [
+  { name: "00-Inbox", title: "Inbox", desc: "Quick captures and unsorted notes." },
+  { name: "01-Projects", title: "Projects", desc: "Active project folders." },
+  { name: "02-Areas", title: "Areas", desc: "Ongoing areas of responsibility." },
+  { name: "03-Resources", title: "Resources", desc: "Reference material and reusable knowledge." },
+  { name: "04-Archive", title: "Archive", desc: "Completed or inactive items." },
+  { name: "05-Templates", title: "Templates", desc: "Note templates for vault_write." },
+  { name: "06-System", title: "System", desc: "System configuration and metadata." },
+];
+
+function makeIndexStub(title, desc) {
+  const today = new Date().toISOString().split("T")[0];
+  return `---\ntype: moc\ncreated: ${today}\ntags:\n  - index\n---\n\n# ${title}\n\n${desc}\n`;
+}
+
+/**
+ * Create PARA folder structure with _index.md stubs.
+ * @param {string} vaultPath
+ * @returns {Promise<{created: number, skipped: number}>}
+ */
+export async function scaffoldFolders(vaultPath) {
+  let created = 0, skipped = 0;
+
+  for (const folder of PARA_FOLDERS) {
+    const dirPath = path.join(vaultPath, folder.name);
+    await fs.mkdir(dirPath, { recursive: true });
+
+    const indexPath = path.join(dirPath, "_index.md");
+    try {
+      await fs.access(indexPath);
+      skipped++;
+    } catch {
+      await fs.writeFile(indexPath, makeIndexStub(folder.title, folder.desc));
+      created++;
+    }
+  }
+
+  return { created, skipped };
+}
+
 /**
  * Copy templates from src to dest directory.
  * @param {string} src - Source templates directory (bundled)
