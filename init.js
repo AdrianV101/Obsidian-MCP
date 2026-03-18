@@ -102,3 +102,36 @@ export async function copyTemplates(src, dest, mode) {
 
   return { created, skipped };
 }
+
+/**
+ * Back up a vault directory to a timestamped sibling directory.
+ * @param {string} vaultPath
+ * @returns {Promise<string>} Path to the backup directory.
+ */
+export async function backupVault(vaultPath) {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const backupPath = `${vaultPath}-backup-${timestamp}`;
+  await fs.cp(vaultPath, backupPath, { recursive: true });
+  return backupPath;
+}
+
+/**
+ * Calculate total size of a directory (in bytes). Skips symlinks.
+ * @param {string} dirPath
+ * @returns {Promise<number>}
+ */
+export async function dirSize(dirPath) {
+  let total = 0;
+  const entries = await fs.readdir(dirPath, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) continue;
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      total += await dirSize(fullPath);
+    } else if (entry.isFile()) {
+      const stat = await fs.stat(fullPath);
+      total += stat.size;
+    }
+  }
+  return total;
+}

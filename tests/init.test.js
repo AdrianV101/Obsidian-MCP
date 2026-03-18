@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import os from "os";
 import path from "path";
 import fs from "fs/promises";
-import { resolveInputPath, copyTemplates, scaffoldFolders } from "../init.js";
+import { resolveInputPath, copyTemplates, scaffoldFolders, backupVault, dirSize } from "../init.js";
 
 describe("resolveInputPath", () => {
   it("expands ~ to home directory", () => {
@@ -145,5 +145,66 @@ describe("scaffoldFolders", () => {
     assert.ok(result.skipped >= 1);
     const content = await fs.readFile(path.join(tmpDir, "00-Inbox", "_index.md"), "utf8");
     assert.equal(content, "# My custom index");
+  });
+});
+
+describe("backupVault", () => {
+  let tmpDir;
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "init-backup-"));
+    await fs.writeFile(path.join(tmpDir, "note.md"), "# Hello");
+    await fs.mkdir(path.join(tmpDir, "subdir"));
+    await fs.writeFile(path.join(tmpDir, "subdir", "deep.md"), "# Deep");
+  });
+
+  it("copies vault to timestamped backup directory", async () => {
+    const backupPath = await backupVault(tmpDir);
+    assert.ok(backupPath.includes("-backup-"));
+    const content = await fs.readFile(path.join(backupPath, "note.md"), "utf8");
+    assert.equal(content, "# Hello");
+    const deepContent = await fs.readFile(path.join(backupPath, "subdir", "deep.md"), "utf8");
+    assert.equal(deepContent, "# Deep");
+  });
+
+  it("does not modify the original vault", async () => {
+    await backupVault(tmpDir);
+    const content = await fs.readFile(path.join(tmpDir, "note.md"), "utf8");
+    assert.equal(content, "# Hello");
+  });
+
+  it("throws if source does not exist", async () => {
+    await assert.rejects(
+      backupVault("/nonexistent/path/vault"),
+      (err) => err.code === "ENOENT" || err.message.includes("ENOENT")
+    );
+  });
+});
+
+describe("dirSize", () => {
+  let tmpDir;
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "init-dirsize-"));
+  });
+
+  it("sums file sizes in a directory", async () => {
+    await fs.writeFile(path.join(tmpDir, "a.txt"), "hello"); // 5 bytes
+    await fs.writeFile(path.join(tmpDir, "b.txt"), "world!"); // 6 bytes
+    const size = await dirSize(tmpDir);
+    assert.equal(size, 11);
+  });
+
+  it("recurses into subdirectories", async () => {
+    await fs.mkdir(path.join(tmpDir, "sub"));
+    await fs.writeFile(path.join(tmpDir, "a.txt"), "hi"); // 2 bytes
+    await fs.writeFile(path.join(tmpDir, "sub", "b.txt"), "hey"); // 3 bytes
+    const size = await dirSize(tmpDir);
+    assert.equal(size, 5);
+  });
+
+  it("returns 0 for empty directory", async () => {
+    const size = await dirSize(tmpDir);
+    assert.equal(size, 0);
   });
 });
