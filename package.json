@@ -2,12 +2,12 @@
   "name": "pkm-mcp-server",
   "version": "1.2.1",
   "description": "MCP server for Obsidian vault integration with Claude Code — 19 tools for notes, search, and graph traversal",
-  "main": "index.js",
+  "main": "cli.js",
   "exports": {
-    ".": "./index.js"
+    ".": "./cli.js"
   },
   "bin": {
-    "pkm-mcp-server": "index.js"
+    "pkm-mcp-server": "cli.js"
   },
   "type": "module",
   "engines": {
@@ -22,7 +22,7 @@
     "sample-project/"
   ],
   "scripts": {
-    "start": "node index.js",
+    "start": "node cli.js",
     "test": "node --test tests/*.test.js",
     "lint": "eslint *.js tests/",
     "prepublishOnly": "npm test && npm run lint"
@@ -52,6 +52,7 @@
     "url": "https://github.com/AdrianV101/Obsidian-MCP/issues"
   },
   "dependencies": {
+    "@inquirer/prompts": "^8.3.2",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "better-sqlite3": "^12.6.2",
     "js-yaml": "^4.1.0",
