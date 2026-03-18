@@ -44,6 +44,8 @@ tags: []
 - Signal handlers (`process.on("SIGINT", ...)`, `process.on("SIGTERM", ...)`) register inside `startServer()`
 - The top-level `initializeServer().catch(...)` call is removed; `startServer()` calls it internally
 - Static imports (`@modelcontextprotocol/sdk`, `crypto`, `os`, etc.) stay at module level (they're side-effect-free)
+- `createRequire(import.meta.url)` and `const { version: PKG_VERSION } = require("./package.json")` also stay at module level (side-effect-free, needed by `startServer()` for the `Server(...)` constructor)
+- Remove the `#!/usr/bin/env node` shebang (no longer a bin entry point; `cli.js` has the shebang now)
 - The file exports only: `export async function startServer() { ... }`
 
 **`package.json`**:
@@ -52,6 +54,7 @@ tags: []
 - `exports`: `{ ".": "./cli.js" }` (was `./index.js`)
 - `scripts.start`: `"node cli.js"` (was `node index.js`)
 - `dependencies`: add `"@inquirer/prompts": "^7.0.0"` (or latest stable)
+- `files`: no change needed — the existing `"*.js"` glob already catches `cli.js` and `init.js`, and `"templates/"` already catches `note.md`
 
 ### Untouched Files
 
@@ -115,8 +118,8 @@ If **no**: prompt for where to create a new vault (suggest `~/Documents/PKM`).
 
 **Backup** (offered when working with non-empty directory):
 - Prompt: "Back up your vault before making changes? (Recommended)"
-- Copies entire directory (including `.obsidian/`, `.trash/`, and all hidden files) to `<vault-path>-backup-YYYY-MM-DD-HHmmss/`
-- For large vaults: checks total size first and warns if >500MB (e.g., "Your vault is 1.2GB. Backup may take a moment.")
+- Copies entire directory using `fs.cp(src, dest, { recursive: true })` (stable in Node 20+, matches engine requirement). Includes `.obsidian/`, `.trash/`, and all hidden files. Symlinks are preserved (not dereferenced) via the default `fs.cp` behavior.
+- For large vaults: checks total size via recursive `fs.stat` walk (summing `stat.size` for files, skipping symlinks) and warns if >500MB (e.g., "Your vault is 1.2GB. Backup may take a moment.")
 - Prints backup path after completion
 - If backup fails: abort wizard entirely ("Backup failed: <error>. Aborting to keep your data safe.")
 
@@ -154,7 +157,23 @@ Will create:
   06-System/         — System configuration and metadata
 ```
 
-The `05-Templates/` line is shown conditionally: if templates were already installed in Step 3, show "(already set up)"; if not, include it in the creation list. Each folder gets a brief `_index.md` with a one-line description of the folder's purpose. Skip folders that already exist. Print summary.
+The `05-Templates/` line is shown conditionally: if templates were already installed in Step 3, show "(already set up)"; if not, include it in the creation list. Each folder gets a brief `_index.md` with frontmatter and a one-line description. Skip folders and `_index.md` files that already exist. Print summary.
+
+**`_index.md` stub format** (consistent with the project's "never create notes without frontmatter" rule):
+```markdown
+---
+type: moc
+created: 2026-03-18
+tags:
+  - index
+---
+
+# Inbox
+
+Quick captures and unsorted notes.
+```
+
+The `type` is `moc` (Map of Content) since these are structural index files. The title and description vary per folder.
 
 If **no**: skip. Note that if the user chose templates in Step 3, `05-Templates/` was already created implicitly by that step.
 
@@ -205,12 +224,12 @@ No other settings will be changed.
 Confirm before writing. `OPENAI_API_KEY` is only included if the user provided one in step 5.
 
 **settings.json handling** (`updateSettingsJson`):
-1. Read existing file, or start with `{}` if it doesn't exist
-2. If file exists but isn't valid JSON: warn the user, show the raw content, and offer to skip registration (don't corrupt the file)
-3. Deep-merge: set `config.mcpServers = config.mcpServers || {}`, then set `config.mcpServers["obsidian-pkm"]` to the new block
-4. Serialize with `JSON.stringify(config, null, 2)`. Note: this re-formats the file with 2-space indentation. Any custom formatting or key ordering in the original file will not be preserved. This is standard for machine-edited JSON and matches how Claude Code itself writes settings.
-5. Write atomically: write to `settings.json.tmp`, then `fs.rename()` to `settings.json`
-6. Create `~/.claude/` directory if it doesn't exist
+1. Create `~/.claude/` directory if it doesn't exist (`fs.mkdir` with `{ recursive: true }`)
+2. Read existing `settings.json`, or start with `{}` if it doesn't exist
+3. If file exists but isn't valid JSON: warn the user, show the raw content, and offer to skip registration (don't corrupt the file)
+4. Deep-merge: set `config.mcpServers = config.mcpServers || {}`, then set `config.mcpServers["obsidian-pkm"]` to the new block
+5. Serialize with `JSON.stringify(config, null, 2)`. Note: this re-formats the file with 2-space indentation. Any custom formatting or key ordering in the original file will not be preserved. This is standard for machine-edited JSON and matches how Claude Code itself writes settings.
+6. Write atomically: write to `settings.json.tmp`, then `fs.rename()` to `settings.json`
 
 **Installation detection for registration**: The registration block detects whether the user installed from npm or from source (by checking if the running script is inside a `node_modules` directory or a global npm prefix). For npm installs: `"command": "npx", "args": ["-y", "pkm-mcp-server"]`. For source installs: `"command": "node", "args": ["/absolute/path/to/cli.js"]`.
 
@@ -272,11 +291,18 @@ const subcommand = process.argv[2];
 if (subcommand === "init") {
   const { runInit } = await import("./init.js");
   await runInit();
-} else {
+} else if (!subcommand || subcommand === "--version" || subcommand === "-v") {
+  // No subcommand: start MCP server. --version/--help handled here too (future).
   const { startServer } = await import("./index.js");
   await startServer();
+} else {
+  console.error(`Unknown command: ${subcommand}`);
+  console.error("Usage: pkm-mcp-server [init]");
+  process.exit(1);
 }
 ```
+
+Unknown subcommands print a usage message and exit with code 1, rather than silently falling through to the MCP server.
 
 Dynamic imports ensure the MCP server modules (heavy: `better-sqlite3`, `sqlite-vec`) are not loaded when running `init`. The wizard only needs `fs`, `path`, `os`, and `@inquirer/prompts`.
 
@@ -290,6 +316,10 @@ All of these move inside a single exported function:
 // Static imports stay at module level (side-effect-free)
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 // ... other imports ...
+
+// Side-effect-free setup stays at module level
+const require = createRequire(import.meta.url);
+const { version: PKG_VERSION } = require("./package.json");
 
 export async function startServer() {
   const VAULT_PATH = process.env.VAULT_PATH || (os.homedir() + "/Documents/PKM");
