@@ -41,6 +41,12 @@ describe("resolveInputPath", () => {
   it("handles absolute paths unchanged (except normalisation)", () => {
     assert.equal(resolveInputPath("/tmp/vault"), "/tmp/vault");
   });
+
+  it("expands multiple $HOME occurrences", () => {
+    const home = os.homedir();
+    const result = resolveInputPath("$HOME/projects/$HOME-backup");
+    assert.equal(result, path.resolve(`${home}/projects/${home}-backup`));
+  });
 });
 
 describe("copyTemplates", () => {
@@ -105,6 +111,15 @@ describe("copyTemplates", () => {
       (err) => err.code === "ENOENT"
     );
   });
+
+  it("full mode ignores non-.md files in source directory", async () => {
+    await fs.writeFile(path.join(srcDir, ".DS_Store"), "junk");
+    const dest = path.join(tmpDir, "vault", "05-Templates");
+    const result = await copyTemplates(srcDir, dest, "full");
+    assert.equal(result.created, 3); // only the 3 .md files
+    const files = await fs.readdir(dest);
+    assert.ok(!files.includes(".DS_Store"));
+  });
 });
 
 describe("scaffoldFolders", () => {
@@ -145,6 +160,13 @@ describe("scaffoldFolders", () => {
     assert.ok(result.skipped >= 1);
     const content = await fs.readFile(path.join(tmpDir, "00-Inbox", "_index.md"), "utf8");
     assert.equal(content, "# My custom index");
+  });
+
+  it("creates correct title and description per folder", async () => {
+    await scaffoldFolders(tmpDir);
+    const systemContent = await fs.readFile(path.join(tmpDir, "06-System", "_index.md"), "utf8");
+    assert.ok(systemContent.includes("# System"));
+    assert.ok(systemContent.includes("System configuration and metadata"));
   });
 });
 
@@ -207,6 +229,13 @@ describe("dirSize", () => {
     const size = await dirSize(tmpDir);
     assert.equal(size, 0);
   });
+
+  it("skips symlinks", async () => {
+    await fs.writeFile(path.join(tmpDir, "real.txt"), "data"); // 4 bytes
+    await fs.symlink(path.join(tmpDir, "real.txt"), path.join(tmpDir, "link.txt"));
+    const size = await dirSize(tmpDir);
+    assert.equal(size, 4);
+  });
 });
 
 describe("updateSettingsJson", () => {
@@ -249,6 +278,23 @@ describe("updateSettingsJson", () => {
       updateSettingsJson(settingsPath, config),
       (err) => err.message.includes("not valid JSON")
     );
+  });
+
+  it("throws with INVALID_JSON code on malformed JSON", async () => {
+    await fs.writeFile(settingsPath, "{ not valid json");
+    const config = { command: "npx", args: [], env: {} };
+    await assert.rejects(
+      updateSettingsJson(settingsPath, config),
+      (err) => err.code === "INVALID_JSON"
+    );
+  });
+
+  it("creates mcpServers key when absent from existing config", async () => {
+    await fs.writeFile(settingsPath, JSON.stringify({ theme: "dark" }, null, 2));
+    const config = { command: "npx", args: [], env: {} };
+    const result = await updateSettingsJson(settingsPath, config);
+    assert.equal(result.theme, "dark");
+    assert.deepEqual(result.mcpServers["obsidian-pkm"], config);
   });
 
   it("overwrites existing obsidian-pkm entry", async () => {
