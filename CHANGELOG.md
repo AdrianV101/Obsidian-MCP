@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-03-19
+
+### Added
+- `pkm-mcp-server init` — interactive onboarding wizard that walks users through vault setup, template installation, folder structure, OpenAI API key configuration, and Claude Code registration in a single session
+- `cli.js` — new CLI dispatcher with `init` and `--version` subcommands; existing MCP server behavior unchanged when run without arguments
+- `templates/note.md` — minimal generic note template for users who prefer to define their own templates
+- 36 unit tests for init wizard helpers
+
+### Changed
+- `index.js` refactored to export `startServer()` for CLI dispatcher (backward compatible — `node index.js` still works)
+- Entry point updated from `index.js` to `cli.js` in package.json (`bin`, `main`, `exports`)
+
+### Dependencies
+- Added `@inquirer/prompts` for interactive CLI prompts
+
 ## [1.2.1] - 2026-03-17
 
 ### Added
