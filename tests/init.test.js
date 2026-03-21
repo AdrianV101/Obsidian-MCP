@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import os from "os";
 import path from "path";
 import fs from "fs/promises";
-import { resolveInputPath, copyTemplates, scaffoldFolders, backupVault, dirSize, buildMcpAddArgs, detectInstallType, patchMcpConfig } from "../init.js";
+import { resolveInputPath, copyTemplates, scaffoldFolders, backupVault, dirSize, buildMcpAddArgs, detectInstallType, patchMcpConfig, isPkmHookEntry } from "../init.js";
 
 describe("resolveInputPath", () => {
   it("expands ~ to home directory", () => {
@@ -363,5 +363,42 @@ describe("patchMcpConfig", () => {
     const noConfig = "#!/bin/bash\necho hello\n";
     const result = patchMcpConfig(noConfig, { command: "npx", args: ["-y", "pkm-mcp-server@latest"] });
     assert.equal(result, noConfig);
+  });
+});
+
+describe("isPkmHookEntry", () => {
+  it("matches entry with hooks/pkm/ in command", () => {
+    const entry = { hooks: [{ type: "command", command: 'VAULT_PATH="/vault" node /home/user/.claude/hooks/pkm/session-start.js' }] };
+    assert.equal(isPkmHookEntry(entry), true);
+  });
+
+  it("matches entry with session-start.js basename", () => {
+    const entry = { hooks: [{ type: "command", command: 'VAULT_PATH="/vault" node /home/user/Projects/Obsidian-MCP/hooks/session-start.js' }] };
+    assert.equal(isPkmHookEntry(entry), true);
+  });
+
+  it("matches entry with stop-sweep.sh basename", () => {
+    const entry = { hooks: [{ type: "command", command: '/path/to/stop-sweep.sh' }] };
+    assert.equal(isPkmHookEntry(entry), true);
+  });
+
+  it("matches entry with capture-handler.sh basename", () => {
+    const entry = { hooks: [{ type: "command", command: '/path/to/capture-handler.sh' }] };
+    assert.equal(isPkmHookEntry(entry), true);
+  });
+
+  it("does not match unrelated hook entry", () => {
+    const entry = { hooks: [{ type: "command", command: '/usr/local/bin/my-hook.sh' }] };
+    assert.equal(isPkmHookEntry(entry), false);
+  });
+
+  it("does not match entry with no hooks array", () => {
+    const entry = { matcher: "Bash" };
+    assert.equal(isPkmHookEntry(entry), false);
+  });
+
+  it("does not match entry with empty hooks array", () => {
+    const entry = { hooks: [] };
+    assert.equal(isPkmHookEntry(entry), false);
   });
 });

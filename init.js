@@ -212,6 +212,25 @@ export function patchMcpConfig(scriptContent, installType) {
   return patched.join("\n");
 }
 
+const PKM_HOOK_BASENAMES = new Set(["session-start.js", "stop-sweep.sh", "capture-handler.sh"]);
+
+/**
+ * Detect if a hook entry is a PKM hook (by path substring or script basename).
+ * @param {object} entry - A hook event entry with `hooks` array
+ * @returns {boolean}
+ */
+export function isPkmHookEntry(entry) {
+  if (!entry.hooks || !Array.isArray(entry.hooks)) return false;
+  return entry.hooks.some(h => {
+    const cmd = h.command || "";
+    if (cmd.includes("hooks/pkm/")) return true;
+    for (const basename of PKM_HOOK_BASENAMES) {
+      if (cmd.includes(basename)) return true;
+    }
+    return false;
+  });
+}
+
 const SYSTEM_DIRS = new Set(["/", "/home", "/usr", "/var", "/etc", "/tmp", "/opt", "/bin", "/sbin"]);
 
 function formatBytes(bytes) {
