@@ -198,6 +198,20 @@ export function detectInstallType(filePath) {
   return { command: "node", args: [cliPath] };
 }
 
+/**
+ * Replace the MCP_CONFIG= line in a shell script with a pre-baked JSON config.
+ * @param {string} scriptContent - Shell script content
+ * @param {{ command: string, args: string[] }} installType - Server command
+ * @returns {string} Patched script content
+ */
+export function patchMcpConfig(scriptContent, installType) {
+  const argsJson = JSON.stringify(installType.args);
+  const replacement = `MCP_CONFIG='{"mcpServers":{"obsidian-pkm":{"command":"${installType.command}","args":${argsJson},"env":{"VAULT_PATH":"'"$VAULT_PATH"'"}}}}'`;
+  const lines = scriptContent.split("\n");
+  const patched = lines.map(line => line.startsWith("MCP_CONFIG=") ? replacement : line);
+  return patched.join("\n");
+}
+
 const SYSTEM_DIRS = new Set(["/", "/home", "/usr", "/var", "/etc", "/tmp", "/opt", "/bin", "/sbin"]);
 
 function formatBytes(bytes) {

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import os from "os";
 import path from "path";
 import fs from "fs/promises";
-import { resolveInputPath, copyTemplates, scaffoldFolders, backupVault, dirSize, buildMcpAddArgs, detectInstallType } from "../init.js";
+import { resolveInputPath, copyTemplates, scaffoldFolders, backupVault, dirSize, buildMcpAddArgs, detectInstallType, patchMcpConfig } from "../init.js";
 
 describe("resolveInputPath", () => {
   it("expands ~ to home directory", () => {
@@ -317,5 +317,51 @@ describe("detectInstallType", () => {
     assert.equal(result.command, "node");
     assert.ok(result.args[0].endsWith("cli.js"));
     assert.ok(path.isAbsolute(result.args[0]));
+  });
+});
+
+describe("patchMcpConfig", () => {
+  const sampleScript = [
+    '#!/usr/bin/env bash',
+    'set -euo pipefail',
+    'SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)',
+    'MCP_CONFIG=$(node -e "console.log(JSON.stringify({mcpServers:{\'obsidian-pkm\':{command:\'node\',args:[process.argv[1]],env:{VAULT_PATH:process.argv[2]}}}}))" "$SCRIPT_DIR/../index.js" "${VAULT_PATH:-$HOME/Documents/PKM}")',
+    'echo "$MCP_CONFIG"',
+  ].join("\n");
+
+  it("replaces MCP_CONFIG line for npx install", () => {
+    const installType = { command: "npx", args: ["-y", "pkm-mcp-server@latest"] };
+    const result = patchMcpConfig(sampleScript, installType);
+    assert.ok(!result.includes('$(node -e'));
+    assert.ok(result.includes('"command":"npx"'));
+    assert.ok(result.includes('"args":["-y","pkm-mcp-server@latest"]'));
+    // Verify exact shell quoting: '..."VAULT_PATH":"'"$VAULT_PATH"'"}}}'
+    // The pattern is: close single-quote, open double-quote, $VAULT_PATH, close double-quote, open single-quote
+    assert.ok(result.includes(`'"$VAULT_PATH"'`), "must use correct shell quoting for $VAULT_PATH expansion");
+    // Other lines preserved
+    assert.ok(result.includes('#!/usr/bin/env bash'));
+    assert.ok(result.includes('echo "$MCP_CONFIG"'));
+  });
+
+  it("replaces MCP_CONFIG line for source install", () => {
+    const installType = { command: "node", args: ["/home/user/Projects/Obsidian-MCP/cli.js"] };
+    const result = patchMcpConfig(sampleScript, installType);
+    assert.ok(result.includes('"command":"node"'));
+    assert.ok(result.includes("/home/user/Projects/Obsidian-MCP/cli.js"));
+  });
+
+  it("preserves lines that don't start with MCP_CONFIG=", () => {
+    const result = patchMcpConfig(sampleScript, { command: "npx", args: ["-y", "pkm-mcp-server@latest"] });
+    const lines = result.split("\n");
+    assert.equal(lines[0], '#!/usr/bin/env bash');
+    assert.equal(lines[1], 'set -euo pipefail');
+    assert.equal(lines[2], 'SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)');
+    assert.equal(lines[4], 'echo "$MCP_CONFIG"');
+  });
+
+  it("returns script unchanged if no MCP_CONFIG= line found", () => {
+    const noConfig = "#!/bin/bash\necho hello\n";
+    const result = patchMcpConfig(noConfig, { command: "npx", args: ["-y", "pkm-mcp-server@latest"] });
+    assert.equal(result, noConfig);
   });
 });
