@@ -1,6 +1,6 @@
 {
   "name": "pkm-mcp-server",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "MCP server for Obsidian vault integration with Claude Code — 19 tools for notes, search, and graph traversal",
   "main": "cli.js",
   "exports": {
