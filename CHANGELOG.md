@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-03-21
+
+### Fixed
+- Init wizard failed to copy `stop-sweep.js` — hook file references still pointed to the old `stop-sweep.sh` filename from before the v1.5.0 bash-to-Node conversion. Updated all references and removed stop-sweep from shell patching (it auto-detects MCP config).
+
 ## [1.5.0] - 2026-03-21
 
 ### Changed
