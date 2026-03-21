@@ -377,8 +377,8 @@ describe("isPkmHookEntry", () => {
     assert.equal(isPkmHookEntry(entry), true);
   });
 
-  it("matches entry with stop-sweep.sh basename", () => {
-    const entry = { hooks: [{ type: "command", command: '/path/to/stop-sweep.sh' }] };
+  it("matches entry with stop-sweep.js basename", () => {
+    const entry = { hooks: [{ type: "command", command: '/path/to/stop-sweep.js' }] };
     assert.equal(isPkmHookEntry(entry), true);
   });
 
@@ -427,7 +427,7 @@ describe("buildHookEntries", () => {
     const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: false, stopSweep: true, captureHandler: false });
     assert.ok(result.Stop);
     assert.equal(result.Stop[0].hooks[0].async, true);
-    assert.ok(result.Stop[0].hooks[0].command.includes("stop-sweep.sh"));
+    assert.ok(result.Stop[0].hooks[0].command.includes("stop-sweep.js"));
   });
 
   it("builds PostToolUse entry when enabled", () => {
@@ -520,7 +520,7 @@ describe("mergeHooksIntoSettings", () => {
   it("removes PKM entries for disabled events", async () => {
     const existing = {
       hooks: {
-        Stop: [{ hooks: [{ type: "command", command: "/path/hooks/pkm/stop-sweep.sh" }] }],
+        Stop: [{ hooks: [{ type: "command", command: "/path/hooks/pkm/stop-sweep.js" }] }],
       },
     };
     await fs.writeFile(settingsPath, JSON.stringify(existing));
@@ -546,7 +546,7 @@ describe("mergeHooksIntoSettings", () => {
       hooks: {
         Stop: [
           { hooks: [{ type: "command", command: "/my/other-hook.sh" }] },
-          { hooks: [{ type: "command", command: "/path/hooks/pkm/stop-sweep.sh" }] },
+          { hooks: [{ type: "command", command: "/path/hooks/pkm/stop-sweep.js" }] },
         ],
       },
     };
@@ -586,7 +586,7 @@ describe("copyHooks", () => {
     await fs.writeFile(path.join(srcDir, "session-start.js"), '#!/usr/bin/env node\nconsole.log("hello");\n');
     await fs.writeFile(path.join(srcDir, "resolve-project.js"), 'export function resolveProject() {}\n');
     await fs.writeFile(path.join(srcDir, "load-context.js"), 'export function loadProjectContext() {}\n');
-    await fs.writeFile(path.join(srcDir, "stop-sweep.sh"), '#!/usr/bin/env bash\nSCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)\nMCP_CONFIG=$(node -e "original")\necho done\n');
+    await fs.writeFile(path.join(srcDir, "stop-sweep.js"), '#!/usr/bin/env node\nconsole.log("sweep");\n');
     await fs.writeFile(path.join(srcDir, "capture-handler.sh"), '#!/usr/bin/env bash\nSCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)\nMCP_CONFIG=$(node -e "original")\necho done\n');
     // Also add README.md to ensure it's NOT copied
     await fs.writeFile(path.join(srcDir, "README.md"), "# Docs\n");
@@ -596,7 +596,7 @@ describe("copyHooks", () => {
     const installType = { command: "npx", args: ["-y", "pkm-mcp-server@latest"] };
     await copyHooks(srcDir, destDir, installType);
     const files = (await fs.readdir(destDir)).sort();
-    assert.deepEqual(files, ["capture-handler.sh", "load-context.js", "resolve-project.js", "session-start.js", "stop-sweep.sh"]);
+    assert.deepEqual(files, ["capture-handler.sh", "load-context.js", "resolve-project.js", "session-start.js", "stop-sweep.js"]);
   });
 
   it("does not copy README.md", async () => {
@@ -609,11 +609,16 @@ describe("copyHooks", () => {
   it("patches MCP_CONFIG in shell scripts", async () => {
     const installType = { command: "npx", args: ["-y", "pkm-mcp-server@latest"] };
     await copyHooks(srcDir, destDir, installType);
-    const sweepContent = await fs.readFile(path.join(destDir, "stop-sweep.sh"), "utf8");
-    assert.ok(!sweepContent.includes('$(node -e "original")'));
-    assert.ok(sweepContent.includes('"command":"npx"'));
     const captureContent = await fs.readFile(path.join(destDir, "capture-handler.sh"), "utf8");
+    assert.ok(!captureContent.includes('$(node -e "original")'));
     assert.ok(captureContent.includes('"command":"npx"'));
+  });
+
+  it("does not patch stop-sweep.js (auto-detects MCP config)", async () => {
+    const installType = { command: "npx", args: ["-y", "pkm-mcp-server@latest"] };
+    await copyHooks(srcDir, destDir, installType);
+    const sweepContent = await fs.readFile(path.join(destDir, "stop-sweep.js"), "utf8");
+    assert.equal(sweepContent, '#!/usr/bin/env node\nconsole.log("sweep");\n');
   });
 
   it("does not patch JS files", async () => {

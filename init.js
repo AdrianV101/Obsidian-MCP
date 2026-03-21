@@ -212,7 +212,7 @@ export function patchMcpConfig(scriptContent, installType) {
   return patched.join("\n");
 }
 
-const PKM_HOOK_BASENAMES = new Set(["session-start.js", "stop-sweep.sh", "capture-handler.sh"]);
+const PKM_HOOK_BASENAMES = new Set(["session-start.js", "stop-sweep.js", "capture-handler.sh"]);
 
 /**
  * Detect if a hook entry is a PKM hook (by path substring or script basename).
@@ -257,7 +257,7 @@ export function buildHookEntries(vaultPath, hooksDir, enabledHooks) {
     entries.Stop = [{
       hooks: [{
         type: "command",
-        command: `VAULT_PATH="${vaultPath}" ${path.join(hooksDir, "stop-sweep.sh")}`,
+        command: `VAULT_PATH="${vaultPath}" node ${path.join(hooksDir, "stop-sweep.js")}`,
         async: true,
         timeout: 10,
       }],
@@ -326,8 +326,8 @@ export async function mergeHooksIntoSettings(settingsPath, hookEntries, disabled
   return {};
 }
 
-const HOOK_FILES = ["session-start.js", "resolve-project.js", "load-context.js", "stop-sweep.sh", "capture-handler.sh"];
-const SHELL_HOOKS = new Set(["stop-sweep.sh", "capture-handler.sh"]);
+const HOOK_FILES = ["session-start.js", "resolve-project.js", "load-context.js", "stop-sweep.js", "capture-handler.sh"];
+const SHELL_HOOKS = new Set(["capture-handler.sh"]);
 
 /**
  * Copy hook scripts to destination, patching shell scripts with correct MCP config.
