@@ -91,12 +91,34 @@ npm install -g pkm-mcp-server
 pkm-mcp-server init
 ```
 
-The setup wizard walks you through:
-1. Vault path (existing or new)
-2. Note templates (full set, minimal, or skip)
-3. PARA folder structure
-4. OpenAI API key for semantic search (optional)
-5. Automatic registration with Claude Code
+The setup wizard walks you through 5 steps. Nothing is written until you confirm each step, and you can press Ctrl+C at any time to cancel.
+
+**Step 1 — Vault path.** Point to an existing Obsidian vault or create a new one. The wizard resolves `~`, `$HOME`, and relative paths automatically. Safety checks prevent using system directories (`/`, `/home`, etc.) as a vault. For existing non-empty directories you can use it as-is, create a subfolder inside it, or wipe it (with triple confirmation). You'll be offered an optional backup before any changes — this creates a timestamped copy next to the vault (e.g. `PKM-backup-2026-03-21T14-30-00/`).
+
+**Step 2 — Note templates.** Copies template files into `<vault>/05-Templates/`. Three options:
+- **Full set** — all 13 templates (`adr`, `daily-note`, `devlog`, `fleeting-note`, `literature-note`, `meeting-notes`, `moc`, `note`, `permanent-note`, `project-index`, `research-note`, `task`, `troubleshooting-log`)
+- **Minimal** — just `note.md` (a single generic template)
+- **Skip** — for users with their own templates
+
+Existing templates are never overwritten.
+
+**Step 3 — PARA folder structure.** Creates 7 top-level folders with `_index.md` stubs:
+
+| Folder | Purpose |
+|--------|---------|
+| `00-Inbox/` | Quick captures and unsorted notes |
+| `01-Projects/` | Active project folders |
+| `02-Areas/` | Ongoing areas of responsibility |
+| `03-Resources/` | Reference material and reusable knowledge |
+| `04-Archive/` | Completed or inactive items |
+| `05-Templates/` | Note templates |
+| `06-System/` | System configuration and metadata |
+
+Each `_index.md` has `type: moc` frontmatter. Existing folders and index files are skipped.
+
+**Step 4 — OpenAI API key (optional).** Enables `vault_semantic_search` and `vault_suggest_links`. The key is stored only in your Claude Code configuration (`~/.claude.json`) and is used solely for generating text embeddings. You can add this later — see [Enable Semantic Search](#3-enable-semantic-search-optional).
+
+**Step 5 — Claude Code registration.** Registers the MCP server via `claude mcp add -s user`. If `obsidian-pkm` is already registered, you'll be asked whether to overwrite. The exact command is shown for confirmation before running. If the `claude` CLI is not found on PATH, the wizard prints the manual registration command instead.
 
 Restart Claude Code after setup. The server provides all tools except semantic search out of the box.
 
@@ -108,6 +130,8 @@ cd Obsidian-MCP
 npm install
 node cli.js init
 ```
+
+You can also run the wizard without a global install: `npx pkm-mcp-server init`.
 
 ### 2. Manual Registration (alternative)
 
@@ -222,9 +246,9 @@ Vault/
 
 ### Templates
 
-Copy the files from `templates/` into your vault's `05-Templates/` folder. `vault_write` loads all `.md` files from that directory at startup and enforces frontmatter on every note created.
+`vault_write` loads all `.md` files from `05-Templates/` at startup and enforces frontmatter on every note created. The setup wizard (`pkm-mcp-server init`) installs these automatically — or you can copy the files from `templates/` manually.
 
-Included templates: `project-index`, `adr`, `devlog`, `permanent-note`, `research-note`, `troubleshooting-log`, `fleeting-note`, `literature-note`, `meeting-notes`, `moc`, `daily-note`, `task`. Add your own templates to `05-Templates/` and they become available to `vault_write` automatically.
+13 included templates: `adr`, `daily-note`, `devlog`, `fleeting-note`, `literature-note`, `meeting-notes`, `moc`, `note`, `permanent-note`, `project-index`, `research-note`, `task`, `troubleshooting-log`. Add your own templates to `05-Templates/` and they become available to `vault_write` automatically.
 
 ### CLAUDE.md for Your Projects
 
