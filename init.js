@@ -2,6 +2,10 @@ import os from "os";
 import path from "path";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
+import { execFile as execFileCb } from "child_process";
+import { promisify } from "util";
+
+const execFileAsync = promisify(execFileCb);
 
 /**
  * Resolve user-provided path input: expand ~, $HOME, resolve relative, normalise.
@@ -131,6 +135,32 @@ export function buildMcpAddArgs({ vaultPath, openaiKey, installType }) {
   }
   args.push("obsidian-pkm", "--", installType.command, ...installType.args);
   return args;
+}
+
+/**
+ * Check if the `claude` CLI is available on PATH.
+ * @returns {Promise<boolean>}
+ */
+export async function checkClaudeCli() {
+  try {
+    await execFileAsync("claude", ["--version"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if obsidian-pkm is already registered in Claude Code.
+ * @returns {Promise<boolean>}
+ */
+export async function checkExistingRegistration() {
+  try {
+    await execFileAsync("claude", ["mcp", "get", "obsidian-pkm"]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
