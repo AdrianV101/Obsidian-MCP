@@ -35,13 +35,20 @@ if [ -z "$CAPTURE_TYPE" ] || [ -z "$CAPTURE_TITLE" ] || [ -z "$CAPTURE_CONTENT" 
   exit 0
 fi
 
-# MCP config for obsidian-pkm server
+# MCP config — auto-detect repo (../index.js exists) vs installed (use npx)
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 MCP_CONFIG=$(node -e "
+  const { existsSync } = require('fs');
+  const path = require('path');
+  const localIndex = path.join(process.argv[1], '..', 'index.js');
+  const useLocal = existsSync(localIndex);
   const env = { VAULT_PATH: process.argv[2] };
   if (process.env.OPENAI_API_KEY) env.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-  console.log(JSON.stringify({ mcpServers: { 'obsidian-pkm': { command: 'node', args: [process.argv[1]], env } } }));
-" "$SCRIPT_DIR/../index.js" "${VAULT_PATH:-$HOME/Documents/PKM}")
+  const server = useLocal
+    ? { command: 'node', args: [localIndex], env }
+    : { command: 'npx', args: ['-y', 'pkm-mcp-server@latest'], env };
+  console.log(JSON.stringify({ mcpServers: { 'obsidian-pkm': server } }));
+" "$SCRIPT_DIR" "${VAULT_PATH:-$HOME/Documents/PKM}")
 
 # Build prompt via Node.js to avoid shell injection from user content
 PROMPT_FILE=$(mktemp)
