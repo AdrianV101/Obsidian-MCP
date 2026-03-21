@@ -279,6 +279,53 @@ export function buildHookEntries(vaultPath, hooksDir, enabledHooks) {
   return entries;
 }
 
+/**
+ * Merge PKM hook entries into ~/.claude/settings.json.
+ * @param {string} settingsPath - Path to settings.json
+ * @param {Object} hookEntries - Entries to add, keyed by event name
+ * @param {string[]} disabledEvents - Event names where PKM hooks should be removed
+ * @returns {Promise<{ error?: string }>}
+ */
+export async function mergeHooksIntoSettings(settingsPath, hookEntries, disabledEvents) {
+  let settings = {};
+
+  try {
+    const raw = await fs.readFile(settingsPath, "utf8");
+    try {
+      settings = JSON.parse(raw);
+    } catch {
+      return { error: `${settingsPath} contains invalid JSON. Fix it manually and re-run init.` };
+    }
+  } catch (e) {
+    if (e.code !== "ENOENT") throw e;
+    // File doesn't exist — start fresh
+  }
+
+  if (!settings.hooks) settings.hooks = {};
+
+  // Add/replace enabled hooks
+  for (const [eventName, entries] of Object.entries(hookEntries)) {
+    if (!settings.hooks[eventName]) settings.hooks[eventName] = [];
+    // Remove existing PKM entries
+    settings.hooks[eventName] = settings.hooks[eventName].filter(e => !isPkmHookEntry(e));
+    // Append new entries
+    settings.hooks[eventName].push(...entries);
+  }
+
+  // Remove disabled hooks
+  for (const eventName of disabledEvents) {
+    if (!settings.hooks[eventName]) continue;
+    settings.hooks[eventName] = settings.hooks[eventName].filter(e => !isPkmHookEntry(e));
+    if (settings.hooks[eventName].length === 0) {
+      delete settings.hooks[eventName];
+    }
+  }
+
+  await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+  await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  return {};
+}
+
 const SYSTEM_DIRS = new Set(["/", "/home", "/usr", "/var", "/etc", "/tmp", "/opt", "/bin", "/sbin"]);
 
 function formatBytes(bytes) {

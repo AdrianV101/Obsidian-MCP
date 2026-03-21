@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import os from "os";
 import path from "path";
 import fs from "fs/promises";
-import { resolveInputPath, copyTemplates, scaffoldFolders, backupVault, dirSize, buildMcpAddArgs, detectInstallType, patchMcpConfig, isPkmHookEntry, buildHookEntries } from "../init.js";
+import { resolveInputPath, copyTemplates, scaffoldFolders, backupVault, dirSize, buildMcpAddArgs, detectInstallType, patchMcpConfig, isPkmHookEntry, buildHookEntries, mergeHooksIntoSettings } from "../init.js";
 
 describe("resolveInputPath", () => {
   it("expands ~ to home directory", () => {
@@ -448,5 +448,128 @@ describe("buildHookEntries", () => {
   it("escapes vault path with double quotes in command", () => {
     const result = buildHookEntries("/path/with spaces/vault", hooksDir, { sessionStart: true, stopSweep: false, captureHandler: false });
     assert.ok(result.SessionStart[0].hooks[0].command.includes('VAULT_PATH="/path/with spaces/vault"'));
+  });
+});
+
+describe("mergeHooksIntoSettings", () => {
+  let tmpDir, settingsPath;
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "init-settings-"));
+    settingsPath = path.join(tmpDir, "settings.json");
+  });
+
+  it("creates settings.json if it doesn't exist", async () => {
+    const hookEntries = {
+      SessionStart: [{ matcher: "startup", hooks: [{ type: "command", command: "node hooks/pkm/session-start.js" }] }],
+    };
+    await mergeHooksIntoSettings(settingsPath, hookEntries, []);
+    const content = JSON.parse(await fs.readFile(settingsPath, "utf8"));
+    assert.ok(content.hooks);
+    assert.ok(content.hooks.SessionStart);
+    assert.equal(content.hooks.SessionStart.length, 1);
+  });
+
+  it("preserves existing non-hook settings", async () => {
+    await fs.writeFile(settingsPath, JSON.stringify({ permissions: { allow: ["Bash"] }, env: { FOO: "bar" } }));
+    const hookEntries = {
+      SessionStart: [{ hooks: [{ type: "command", command: "node hooks/pkm/session-start.js" }] }],
+    };
+    await mergeHooksIntoSettings(settingsPath, hookEntries, []);
+    const content = JSON.parse(await fs.readFile(settingsPath, "utf8"));
+    assert.deepEqual(content.permissions, { allow: ["Bash"] });
+    assert.deepEqual(content.env, { FOO: "bar" });
+  });
+
+  it("preserves unrelated hooks in the same event", async () => {
+    const existing = {
+      hooks: {
+        SessionStart: [
+          { matcher: "startup", hooks: [{ type: "command", command: "/usr/local/bin/my-custom-hook.sh" }] },
+        ],
+      },
+    };
+    await fs.writeFile(settingsPath, JSON.stringify(existing));
+    const hookEntries = {
+      SessionStart: [{ matcher: "startup|clear|compact", hooks: [{ type: "command", command: "node hooks/pkm/session-start.js" }] }],
+    };
+    await mergeHooksIntoSettings(settingsPath, hookEntries, []);
+    const content = JSON.parse(await fs.readFile(settingsPath, "utf8"));
+    assert.equal(content.hooks.SessionStart.length, 2);
+    assert.ok(content.hooks.SessionStart.some(e => e.hooks[0].command.includes("my-custom-hook")));
+  });
+
+  it("replaces existing PKM hook entries on re-run", async () => {
+    const existing = {
+      hooks: {
+        SessionStart: [
+          { matcher: "startup|clear|compact", hooks: [{ type: "command", command: 'VAULT_PATH="/old" node /old/hooks/pkm/session-start.js' }] },
+        ],
+      },
+    };
+    await fs.writeFile(settingsPath, JSON.stringify(existing));
+    const hookEntries = {
+      SessionStart: [{ matcher: "startup|clear|compact", hooks: [{ type: "command", command: 'VAULT_PATH="/new" node /new/hooks/pkm/session-start.js' }] }],
+    };
+    await mergeHooksIntoSettings(settingsPath, hookEntries, []);
+    const content = JSON.parse(await fs.readFile(settingsPath, "utf8"));
+    assert.equal(content.hooks.SessionStart.length, 1);
+    assert.ok(content.hooks.SessionStart[0].hooks[0].command.includes("/new/"));
+  });
+
+  it("removes PKM entries for disabled events", async () => {
+    const existing = {
+      hooks: {
+        Stop: [{ hooks: [{ type: "command", command: "/path/hooks/pkm/stop-sweep.sh" }] }],
+      },
+    };
+    await fs.writeFile(settingsPath, JSON.stringify(existing));
+    await mergeHooksIntoSettings(settingsPath, {}, ["Stop"]);
+    const content = JSON.parse(await fs.readFile(settingsPath, "utf8"));
+    assert.equal(content.hooks.Stop, undefined);
+  });
+
+  it("removes event key when array becomes empty after disabling", async () => {
+    const existing = {
+      hooks: {
+        PostToolUse: [{ matcher: "mcp__obsidian-pkm__vault_capture", hooks: [{ type: "command", command: "/path/hooks/pkm/capture-handler.sh" }] }],
+      },
+    };
+    await fs.writeFile(settingsPath, JSON.stringify(existing));
+    await mergeHooksIntoSettings(settingsPath, {}, ["PostToolUse"]);
+    const content = JSON.parse(await fs.readFile(settingsPath, "utf8"));
+    assert.ok(!("PostToolUse" in (content.hooks || {})));
+  });
+
+  it("keeps unrelated entries when disabling PKM hook for that event", async () => {
+    const existing = {
+      hooks: {
+        Stop: [
+          { hooks: [{ type: "command", command: "/my/other-hook.sh" }] },
+          { hooks: [{ type: "command", command: "/path/hooks/pkm/stop-sweep.sh" }] },
+        ],
+      },
+    };
+    await fs.writeFile(settingsPath, JSON.stringify(existing));
+    await mergeHooksIntoSettings(settingsPath, {}, ["Stop"]);
+    const content = JSON.parse(await fs.readFile(settingsPath, "utf8"));
+    assert.equal(content.hooks.Stop.length, 1);
+    assert.ok(content.hooks.Stop[0].hooks[0].command.includes("other-hook"));
+  });
+
+  it("returns { error } for malformed JSON without modifying the file", async () => {
+    await fs.writeFile(settingsPath, "{ not valid json ");
+    const result = await mergeHooksIntoSettings(settingsPath, { SessionStart: [{}] }, []);
+    assert.ok(result.error);
+    const raw = await fs.readFile(settingsPath, "utf8");
+    assert.equal(raw, "{ not valid json ");
+  });
+
+  it("writes with 2-space indentation", async () => {
+    await mergeHooksIntoSettings(settingsPath, {
+      SessionStart: [{ hooks: [{ type: "command", command: "test" }] }],
+    }, []);
+    const raw = await fs.readFile(settingsPath, "utf8");
+    assert.ok(raw.includes('  "hooks"'));
   });
 });
