@@ -376,13 +376,14 @@ export async function runInit() {
 pkm-mcp-server setup wizard
 
 This will walk you through setting up your Obsidian vault for use with the
-PKM MCP server. You'll be asked about 5 things:
+PKM MCP server. You'll be asked about 6 things:
 
   1. Where your vault is (or where to create one)
   2. Whether to install note templates
   3. Whether to set up the recommended folder structure
   4. An optional OpenAI API key for semantic search
   5. Registering the server with Claude Code
+  6. Setting up PKM hooks for Claude Code
 
 Nothing is written until you confirm each step. Press Ctrl+C at any time to cancel.
 `);
@@ -470,6 +471,7 @@ Nothing is written until you confirm each step. Press Ctrl+C at any time to canc
     }
     // ── Step 6: Registration ──
     const hasClaude = await checkClaudeCli();
+    let hasMcpRegistration = false;
     if (!hasClaude) {
       const installType = detectInstallType();
       const manualCmd = `claude mcp add -s user -e VAULT_PATH=${vaultPath} -- obsidian-pkm ${installType.command} ${installType.args.join(" ")}`;
@@ -489,6 +491,7 @@ Nothing is written until you confirm each step. Press Ctrl+C at any time to canc
         if (!overwrite) {
           console.log("  Registration skipped.\n");
           skipRegistration = true;
+          hasMcpRegistration = true;
         } else {
           // Remove existing before re-adding
           try {
@@ -514,6 +517,7 @@ Nothing is written until you confirm each step. Press Ctrl+C at any time to canc
             await execFileAsync("claude", addArgs);
             console.log("  MCP server registered with Claude Code");
             steps.push("MCP server: registered");
+            hasMcpRegistration = true;
           } catch (regErr) {
             console.error(`\n  Registration failed: ${regErr.message}`);
             if (regErr.stderr) console.error(`  ${regErr.stderr.trim()}`);
@@ -531,7 +535,98 @@ Nothing is written until you confirm each step. Press Ctrl+C at any time to canc
       }
     }
 
-    // ── Step 7: Summary ──
+    const skipHooks = !hasClaude || !hasMcpRegistration;
+
+    // ── Step 7: PKM Hooks ──
+    const hooksDir = path.join(os.homedir(), ".claude", "hooks", "pkm");
+    const bundledHooksDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "hooks");
+    let hooksSummary;
+
+    if (skipHooks) {
+      const reason = !hasClaude ? "Claude CLI not found" : "no MCP registration";
+      hooksSummary = `skipped (${reason})`;
+      steps.push(`Hooks: skipped (${reason})`);
+    } else {
+      // Check for existing hook files
+      let hookFilesExist = false;
+      try {
+        const existing = await fs.readdir(hooksDir);
+        hookFilesExist = existing.length > 0;
+      } catch { /* doesn't exist */ }
+
+      let doCopyHooks = true;
+      if (hookFilesExist) {
+        doCopyHooks = await confirmPrompt({
+          message: "PKM hook scripts are already installed. Overwrite with current version?",
+          default: false,
+        });
+      }
+
+      if (doCopyHooks) {
+        try {
+          const installType = detectInstallType();
+          await copyHooks(bundledHooksDir, hooksDir, installType);
+          console.log(`  Hook scripts installed to ${hooksDir}`);
+        } catch (copyErr) {
+          console.error(`\n  Hook file installation failed: ${copyErr.message}`);
+          const skipHookSetup = await confirmPrompt({ message: "Skip hooks and finish setup?", default: true });
+          if (skipHookSetup) {
+            hooksSummary = "skipped (file copy failed)";
+            steps.push("Hooks: skipped (file copy failed)");
+          } else {
+            throw copyErr;
+          }
+        }
+      }
+
+      // Only proceed to config if we haven't set hooksSummary (i.e., no error)
+      if (!hooksSummary) {
+        const enableSessionStart = await confirmPrompt({
+          message: "Enable project context loading? Automatically loads your project's index, recent devlog entries, and active tasks at the start of each Claude Code session.",
+          default: true,
+        });
+
+        const enableStopSweep = await confirmPrompt({
+          message: "Enable passive capture? After each Claude response, a background agent scans the conversation for decisions, task changes, and research findings, and stages them in your vault's inbox.",
+          default: true,
+        });
+
+        const enableCaptureHandler = await confirmPrompt({
+          message: "Enable explicit capture? When Claude calls vault_capture, a background agent creates a properly structured vault note (ADR, task, research note, or bug report) from the capture payload.",
+          default: true,
+        });
+
+        const enabledHooks = {
+          sessionStart: enableSessionStart,
+          stopSweep: enableStopSweep,
+          captureHandler: enableCaptureHandler,
+        };
+
+        const hookEntries = buildHookEntries(vaultPath, hooksDir, enabledHooks);
+        const disabledEvents = [];
+        if (!enableSessionStart) disabledEvents.push("SessionStart");
+        if (!enableStopSweep) disabledEvents.push("Stop");
+        if (!enableCaptureHandler) disabledEvents.push("PostToolUse");
+
+        const settingsPath = path.join(os.homedir(), ".claude", "settings.json");
+        const mergeResult = await mergeHooksIntoSettings(settingsPath, hookEntries, disabledEvents);
+
+        if (mergeResult.error) {
+          console.error(`\n  ${mergeResult.error}`);
+          hooksSummary = "skipped (settings.json error)";
+        } else {
+          const names = [];
+          if (enableSessionStart) names.push("context-loading");
+          if (enableStopSweep) names.push("passive-capture");
+          if (enableCaptureHandler) names.push("explicit-capture");
+          hooksSummary = names.length > 0 ? names.join(", ") : "none";
+          console.log(`  Hooks configured: ${hooksSummary}`);
+        }
+        steps.push(`Hooks: ${hooksSummary}`);
+      }
+    }
+
+    // ── Step 8: Summary ──
     // Build summary lines based on what was actually done
     const templateSummary = templateMode === "skip"
       ? "Skipped"
@@ -556,6 +651,7 @@ Setup complete!
   Folders:     ${folderSummary}
   Semantic:    ${semanticSummary}
   Claude Code: ${registrationSummary}
+  Hooks:       ${hooksSummary}
 
 To verify, restart Claude Code and try:
   "List the folders in my vault"
