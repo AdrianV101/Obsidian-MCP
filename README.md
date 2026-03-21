@@ -114,7 +114,7 @@ node cli.js init
 If you prefer to skip the wizard, register directly with the Claude CLI:
 
 ```bash
-claude mcp add -s user -e VAULT_PATH=/absolute/path/to/your/vault -- obsidian-pkm npx -y pkm-mcp-server
+claude mcp add -s user -e VAULT_PATH=/absolute/path/to/your/vault -- obsidian-pkm npx -y pkm-mcp-server@latest
 ```
 
 For a source install:
@@ -134,7 +134,7 @@ claude mcp remove obsidian-pkm
 claude mcp add -s user \
   -e VAULT_PATH=/absolute/path/to/your/vault \
   -e OPENAI_API_KEY=sk-... \
-  -- obsidian-pkm npx -y pkm-mcp-server
+  -- obsidian-pkm npx -y pkm-mcp-server@latest
 ```
 
 This enables `vault_semantic_search` and `vault_suggest_links`. Uses `text-embedding-3-large` with a SQLite + sqlite-vec index stored at `.obsidian/semantic-index.db`. The index rebuilds automatically — delete the DB file to force a full re-embed.
@@ -280,7 +280,7 @@ All paths passed to tools are relative to vault root. The server includes path s
 You need C++ build tools. See [Prerequisites](#prerequisites) for your platform. On Linux, `sudo apt install build-essential python3` usually fixes it.
 
 **Server starts but all tool calls fail with ENOENT**
-Your `VAULT_PATH` is wrong or missing. The server validates this at startup and exits with a clear error. Re-register with the correct path: `claude mcp remove obsidian-pkm && claude mcp add -s user -e VAULT_PATH=/correct/path -- obsidian-pkm npx -y pkm-mcp-server`
+Your `VAULT_PATH` is wrong or missing. The server validates this at startup and exits with a clear error. Re-register with the correct path: `claude mcp remove obsidian-pkm && claude mcp add -s user -e VAULT_PATH=/correct/path -- obsidian-pkm npx -y pkm-mcp-server@latest`
 
 **`vault_write` says "no templates available"**
 Run `pkm-mcp-server init` to install templates, or copy the `templates/` files from this repo into your vault's `05-Templates/` directory. The server loads templates from there at startup.

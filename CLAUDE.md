@@ -209,7 +209,7 @@ pkm-mcp-server init
 claude mcp add -s user \
   -e VAULT_PATH=/absolute/path/to/obsidian/vault \
   -e OPENAI_API_KEY=sk-... \
-  -- obsidian-pkm npx -y pkm-mcp-server
+  -- obsidian-pkm npx -y pkm-mcp-server@latest
 ```
 
 `OPENAI_API_KEY` is optional — without it, all tools except `vault_semantic_search` and `vault_suggest_links` work normally.

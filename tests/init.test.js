@@ -243,12 +243,12 @@ describe("buildMcpAddArgs", () => {
     const args = buildMcpAddArgs({
       vaultPath: "/home/user/Documents/PKM",
       openaiKey: null,
-      installType: { command: "npx", args: ["-y", "pkm-mcp-server"] },
+      installType: { command: "npx", args: ["-y", "pkm-mcp-server@latest"] },
     });
     assert.deepEqual(args, [
       "mcp", "add", "-s", "user",
       "-e", "VAULT_PATH=/home/user/Documents/PKM",
-      "--", "obsidian-pkm", "npx", "-y", "pkm-mcp-server",
+      "--", "obsidian-pkm", "npx", "-y", "pkm-mcp-server@latest",
     ]);
   });
 
@@ -256,7 +256,7 @@ describe("buildMcpAddArgs", () => {
     const args = buildMcpAddArgs({
       vaultPath: "/vault",
       openaiKey: "sk-test-key",
-      installType: { command: "npx", args: ["-y", "pkm-mcp-server"] },
+      installType: { command: "npx", args: ["-y", "pkm-mcp-server@latest"] },
     });
     assert.ok(args.includes("-e"));
     const keyIdx = args.indexOf("OPENAI_API_KEY=sk-test-key");
@@ -281,7 +281,7 @@ describe("buildMcpAddArgs", () => {
     const args = buildMcpAddArgs({
       vaultPath: "/vault",
       openaiKey: "sk-key",
-      installType: { command: "npx", args: ["-y", "pkm-mcp-server"] },
+      installType: { command: "npx", args: ["-y", "pkm-mcp-server@latest"] },
     });
     const nameIdx = args.indexOf("obsidian-pkm");
     const flagIndices = args
@@ -296,7 +296,7 @@ describe("buildMcpAddArgs", () => {
     const args = buildMcpAddArgs({
       vaultPath: "/vault",
       openaiKey: null,
-      installType: { command: "npx", args: ["-y", "pkm-mcp-server"] },
+      installType: { command: "npx", args: ["-y", "pkm-mcp-server@latest"] },
     });
     const nameIdx = args.indexOf("obsidian-pkm");
     const dashIdx = args.indexOf("--");
@@ -309,7 +309,7 @@ describe("detectInstallType", () => {
   it("returns npx for a path inside node_modules", () => {
     const result = detectInstallType("/usr/lib/node_modules/pkm-mcp-server/init.js");
     assert.equal(result.command, "npx");
-    assert.deepEqual(result.args, ["-y", "pkm-mcp-server"]);
+    assert.deepEqual(result.args, ["-y", "pkm-mcp-server@latest"]);
   });
 
   it("returns node with absolute cli.js path for a source install", () => {
