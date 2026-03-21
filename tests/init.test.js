@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import os from "os";
 import path from "path";
 import fs from "fs/promises";
-import { resolveInputPath, copyTemplates, scaffoldFolders, backupVault, dirSize, updateSettingsJson, detectInstallType } from "../init.js";
+import { resolveInputPath, copyTemplates, scaffoldFolders, backupVault, dirSize, buildMcpAddArgs, detectInstallType } from "../init.js";
 
 describe("resolveInputPath", () => {
   it("expands ~ to home directory", () => {
@@ -238,72 +238,72 @@ describe("dirSize", () => {
   });
 });
 
-describe("updateSettingsJson", () => {
-  let tmpDir, settingsPath;
-
-  beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "init-settings-"));
-    settingsPath = path.join(tmpDir, "settings.json");
+describe("buildMcpAddArgs", () => {
+  it("builds correct args for npm install with vault path only", () => {
+    const args = buildMcpAddArgs({
+      vaultPath: "/home/user/Documents/PKM",
+      openaiKey: null,
+      installType: { command: "npx", args: ["-y", "pkm-mcp-server"] },
+    });
+    assert.deepEqual(args, [
+      "mcp", "add", "-s", "user",
+      "-e", "VAULT_PATH=/home/user/Documents/PKM",
+      "obsidian-pkm",
+      "--", "npx", "-y", "pkm-mcp-server",
+    ]);
   });
 
-  it("creates settings.json if it does not exist", async () => {
-    const config = { command: "npx", args: ["-y", "pkm-mcp-server"], env: { VAULT_PATH: "/v" } };
-    const result = await updateSettingsJson(settingsPath, config);
-    assert.deepEqual(result.mcpServers["obsidian-pkm"], config);
-    const written = JSON.parse(await fs.readFile(settingsPath, "utf8"));
-    assert.deepEqual(written.mcpServers["obsidian-pkm"], config);
+  it("includes OPENAI_API_KEY when provided", () => {
+    const args = buildMcpAddArgs({
+      vaultPath: "/vault",
+      openaiKey: "sk-test-key",
+      installType: { command: "npx", args: ["-y", "pkm-mcp-server"] },
+    });
+    assert.ok(args.includes("-e"));
+    const keyIdx = args.indexOf("OPENAI_API_KEY=sk-test-key");
+    assert.ok(keyIdx > 0);
+    assert.equal(args[keyIdx - 1], "-e");
   });
 
-  it("merges into existing settings without overwriting other keys", async () => {
-    await fs.writeFile(settingsPath, JSON.stringify({ theme: "dark", mcpServers: { other: { command: "x" } } }, null, 2));
-    const config = { command: "npx", args: ["-y", "pkm-mcp-server"], env: {} };
-    const result = await updateSettingsJson(settingsPath, config);
-    assert.equal(result.theme, "dark");
-    assert.deepEqual(result.mcpServers.other, { command: "x" });
-    assert.deepEqual(result.mcpServers["obsidian-pkm"], config);
+  it("builds correct args for source install", () => {
+    const args = buildMcpAddArgs({
+      vaultPath: "/vault",
+      openaiKey: null,
+      installType: { command: "node", args: ["/home/user/Projects/Obsidian-MCP/cli.js"] },
+    });
+    assert.deepEqual(args, [
+      "mcp", "add", "-s", "user",
+      "-e", "VAULT_PATH=/vault",
+      "obsidian-pkm",
+      "--", "node", "/home/user/Projects/Obsidian-MCP/cli.js",
+    ]);
   });
 
-  it("creates parent directory if it does not exist", async () => {
-    const deepPath = path.join(tmpDir, "sub", "dir", "settings.json");
-    const config = { command: "npx", args: [], env: {} };
-    await updateSettingsJson(deepPath, config);
-    const written = JSON.parse(await fs.readFile(deepPath, "utf8"));
-    assert.ok(written.mcpServers["obsidian-pkm"]);
+  it("places all flags before server name", () => {
+    const args = buildMcpAddArgs({
+      vaultPath: "/vault",
+      openaiKey: "sk-key",
+      installType: { command: "npx", args: ["-y", "pkm-mcp-server"] },
+    });
+    const nameIdx = args.indexOf("obsidian-pkm");
+    const flagIndices = args
+      .map((a, i) => (a === "-s" || a === "-e") ? i : -1)
+      .filter(i => i >= 0);
+    for (const fi of flagIndices) {
+      assert.ok(fi < nameIdx, `flag at index ${fi} should be before server name at ${nameIdx}`);
+    }
   });
 
-  it("throws on malformed JSON", async () => {
-    await fs.writeFile(settingsPath, "{ not valid json");
-    const config = { command: "npx", args: [], env: {} };
-    await assert.rejects(
-      updateSettingsJson(settingsPath, config),
-      (err) => err.message.includes("not valid JSON")
-    );
-  });
-
-  it("throws with INVALID_JSON code on malformed JSON", async () => {
-    await fs.writeFile(settingsPath, "{ not valid json");
-    const config = { command: "npx", args: [], env: {} };
-    await assert.rejects(
-      updateSettingsJson(settingsPath, config),
-      (err) => err.code === "INVALID_JSON"
-    );
-  });
-
-  it("creates mcpServers key when absent from existing config", async () => {
-    await fs.writeFile(settingsPath, JSON.stringify({ theme: "dark" }, null, 2));
-    const config = { command: "npx", args: [], env: {} };
-    const result = await updateSettingsJson(settingsPath, config);
-    assert.equal(result.theme, "dark");
-    assert.deepEqual(result.mcpServers["obsidian-pkm"], config);
-  });
-
-  it("overwrites existing obsidian-pkm entry", async () => {
-    await fs.writeFile(settingsPath, JSON.stringify({
-      mcpServers: { "obsidian-pkm": { command: "old" } }
-    }, null, 2));
-    const config = { command: "new", args: [], env: {} };
-    const result = await updateSettingsJson(settingsPath, config);
-    assert.equal(result.mcpServers["obsidian-pkm"].command, "new");
+  it("places -- separator between server name and command", () => {
+    const args = buildMcpAddArgs({
+      vaultPath: "/vault",
+      openaiKey: null,
+      installType: { command: "npx", args: ["-y", "pkm-mcp-server"] },
+    });
+    const nameIdx = args.indexOf("obsidian-pkm");
+    const dashIdx = args.indexOf("--");
+    assert.ok(dashIdx > nameIdx);
+    assert.equal(dashIdx, nameIdx + 1);
   });
 });
 
