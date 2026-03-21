@@ -231,6 +231,54 @@ export function isPkmHookEntry(entry) {
   });
 }
 
+/**
+ * Build settings.json hook config entries for enabled hooks.
+ * @param {string} vaultPath - Absolute vault path
+ * @param {string} hooksDir - Absolute path to installed hooks directory
+ * @param {{ sessionStart: boolean, stopSweep: boolean, captureHandler: boolean }} enabledHooks
+ * @returns {Object} Hook entries keyed by event name (SessionStart, Stop, PostToolUse)
+ */
+export function buildHookEntries(vaultPath, hooksDir, enabledHooks) {
+  const entries = {};
+
+  if (enabledHooks.sessionStart) {
+    entries.SessionStart = [{
+      matcher: "startup|clear|compact",
+      hooks: [{
+        type: "command",
+        command: `VAULT_PATH="${vaultPath}" node ${path.join(hooksDir, "session-start.js")}`,
+        timeout: 15,
+        statusMessage: "Loading PKM project context...",
+      }],
+    }];
+  }
+
+  if (enabledHooks.stopSweep) {
+    entries.Stop = [{
+      hooks: [{
+        type: "command",
+        command: `VAULT_PATH="${vaultPath}" ${path.join(hooksDir, "stop-sweep.sh")}`,
+        async: true,
+        timeout: 10,
+      }],
+    }];
+  }
+
+  if (enabledHooks.captureHandler) {
+    entries.PostToolUse = [{
+      matcher: "mcp__obsidian-pkm__vault_capture",
+      hooks: [{
+        type: "command",
+        command: `VAULT_PATH="${vaultPath}" ${path.join(hooksDir, "capture-handler.sh")}`,
+        async: true,
+        timeout: 10,
+      }],
+    }];
+  }
+
+  return entries;
+}
+
 const SYSTEM_DIRS = new Set(["/", "/home", "/usr", "/var", "/etc", "/tmp", "/opt", "/bin", "/sbin"]);
 
 function formatBytes(bytes) {

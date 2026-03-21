@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import os from "os";
 import path from "path";
 import fs from "fs/promises";
-import { resolveInputPath, copyTemplates, scaffoldFolders, backupVault, dirSize, buildMcpAddArgs, detectInstallType, patchMcpConfig, isPkmHookEntry } from "../init.js";
+import { resolveInputPath, copyTemplates, scaffoldFolders, backupVault, dirSize, buildMcpAddArgs, detectInstallType, patchMcpConfig, isPkmHookEntry, buildHookEntries } from "../init.js";
 
 describe("resolveInputPath", () => {
   it("expands ~ to home directory", () => {
@@ -400,5 +400,53 @@ describe("isPkmHookEntry", () => {
   it("does not match entry with empty hooks array", () => {
     const entry = { hooks: [] };
     assert.equal(isPkmHookEntry(entry), false);
+  });
+});
+
+describe("buildHookEntries", () => {
+  const vaultPath = "/home/user/Documents/PKM";
+  const hooksDir = "/home/user/.claude/hooks/pkm";
+
+  it("returns empty object when no hooks enabled", () => {
+    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: false, stopSweep: false, captureHandler: false });
+    assert.deepEqual(result, {});
+  });
+
+  it("builds SessionStart entry when enabled", () => {
+    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: true, stopSweep: false, captureHandler: false });
+    assert.ok(result.SessionStart);
+    assert.equal(result.SessionStart.length, 1);
+    assert.equal(result.SessionStart[0].matcher, "startup|clear|compact");
+    assert.ok(result.SessionStart[0].hooks[0].command.includes("session-start.js"));
+    assert.ok(result.SessionStart[0].hooks[0].command.includes(vaultPath));
+    assert.equal(result.SessionStart[0].hooks[0].timeout, 15);
+    assert.equal(result.SessionStart[0].hooks[0].statusMessage, "Loading PKM project context...");
+  });
+
+  it("builds Stop entry when enabled", () => {
+    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: false, stopSweep: true, captureHandler: false });
+    assert.ok(result.Stop);
+    assert.equal(result.Stop[0].hooks[0].async, true);
+    assert.ok(result.Stop[0].hooks[0].command.includes("stop-sweep.sh"));
+  });
+
+  it("builds PostToolUse entry when enabled", () => {
+    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: false, stopSweep: false, captureHandler: true });
+    assert.ok(result.PostToolUse);
+    assert.equal(result.PostToolUse[0].matcher, "mcp__obsidian-pkm__vault_capture");
+    assert.ok(result.PostToolUse[0].hooks[0].command.includes("capture-handler.sh"));
+    assert.equal(result.PostToolUse[0].hooks[0].async, true);
+  });
+
+  it("builds all three when all enabled", () => {
+    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: true, stopSweep: true, captureHandler: true });
+    assert.ok(result.SessionStart);
+    assert.ok(result.Stop);
+    assert.ok(result.PostToolUse);
+  });
+
+  it("escapes vault path with double quotes in command", () => {
+    const result = buildHookEntries("/path/with spaces/vault", hooksDir, { sessionStart: true, stopSweep: false, captureHandler: false });
+    assert.ok(result.SessionStart[0].hooks[0].command.includes('VAULT_PATH="/path/with spaces/vault"'));
   });
 });
