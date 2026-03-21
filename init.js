@@ -214,7 +214,6 @@ export async function runInit() {
   const { confirm: confirmPrompt, input, select, password } = await import("@inquirer/prompts");
 
   const bundledTemplatesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "templates");
-  const settingsPath = path.join(os.homedir(), ".claude", "settings.json");
   const steps = [];
 
   try {
@@ -306,8 +305,8 @@ Nothing is written until you confirm each step. Press Ctrl+C at any time to canc
       console.log(`
   Get an API key at: https://platform.openai.com/api-keys
 
-  This key is stored only in your local Claude Code settings file
-  (~/.claude/settings.json) and is never sent to us or anyone else.
+  This key is stored only in your Claude Code configuration
+  (~/.claude.json) and is never sent to us or anyone else.
   It's used solely for generating text embeddings via OpenAI's API.
 `);
       openaiKey = await password({ message: "OpenAI API key (Enter to skip):", mask: "*" });
@@ -316,79 +315,66 @@ Nothing is written until you confirm each step. Press Ctrl+C at any time to canc
       console.log("  You can add this later by setting OPENAI_API_KEY in your Claude Code settings.\n");
     }
     // ── Step 6: Registration ──
-    const installType = detectInstallType();
-    const serverConfig = {
-      command: installType.command,
-      args: [...installType.args],
-      env: { VAULT_PATH: vaultPath },
-    };
-    if (openaiKey) {
-      serverConfig.env.OPENAI_API_KEY = openaiKey;
-    }
+    const hasClaude = await checkClaudeCli();
+    if (!hasClaude) {
+      const installType = detectInstallType();
+      const manualCmd = `claude mcp add -s user -e VAULT_PATH=${vaultPath} obsidian-pkm -- ${installType.command} ${installType.args.join(" ")}`;
+      console.log(`
+  Claude Code CLI not found on PATH. To register manually, run:
 
-    // Check for existing registration
-    let hasExisting = false;
-    try {
-      const raw = await fs.readFile(settingsPath, "utf8");
-      const existing = JSON.parse(raw);
-      if (existing.mcpServers?.["obsidian-pkm"]) {
-        hasExisting = true;
+    ${manualCmd}
+`);
+      steps.push("MCP server: skipped (Claude CLI not found)");
+    } else {
+      const installType = detectInstallType();
+      const hasExisting = await checkExistingRegistration();
+
+      let skipRegistration = false;
+      if (hasExisting) {
+        const overwrite = await confirmPrompt({ message: "Claude Code is already configured for pkm-mcp-server. Overwrite?", default: false });
+        if (!overwrite) {
+          console.log("  Registration skipped.\n");
+          skipRegistration = true;
+        } else {
+          // Remove existing before re-adding
+          try {
+            await execFileAsync("claude", ["mcp", "remove", "obsidian-pkm"]);
+          } catch (e) {
+            console.warn(`  Warning: could not remove existing registration: ${e.message}`);
+          }
+        }
       }
-    } catch (e) {
-      if (e.code !== "ENOENT" && !(e instanceof SyntaxError)) {
-        console.warn(`  Warning: could not read ${settingsPath}: ${e.message}`);
-      }
-    }
 
-    let skipRegistration = false;
-    if (hasExisting) {
-      const overwrite = await confirmPrompt({ message: "Claude Code is already configured for pkm-mcp-server. Overwrite?", default: false });
-      if (!overwrite) { console.log("  Registration skipped.\n"); skipRegistration = true; }
-    }
+      if (!skipRegistration) {
+        const addArgs = buildMcpAddArgs({ vaultPath, openaiKey, installType });
+        const displayCmd = `claude ${addArgs.join(" ")}`;
+        console.log(`\nWill run:\n\n  ${displayCmd}\n`);
 
-    if (!skipRegistration) {
-      // Show preview
-      const previewObj = {
-        mcpServers: {
-          "obsidian-pkm": serverConfig,
-        },
-      };
-      console.log(`\nWill write to ${settingsPath}:\n`);
-      console.log(JSON.stringify(previewObj, null, 2));
-      console.log("\nThis only adds the \"obsidian-pkm\" key under \"mcpServers\". No other settings will be changed.");
+        const doRegister = await confirmPrompt({
+          message: "Register MCP server with Claude Code?",
+          default: true,
+        });
 
-      const doRegister = await confirmPrompt({
-        message: "Register MCP server with Claude Code?",
-        default: true,
-      });
-
-      if (doRegister) {
-        let registered = false;
-        try {
-          await updateSettingsJson(settingsPath, serverConfig);
-          registered = true;
-        } catch (regErr) {
-          if (regErr.code === "INVALID_JSON") {
-            console.error(`\n  ${regErr.message}`);
+        if (doRegister) {
+          try {
+            await execFileAsync("claude", addArgs);
+            console.log("  MCP server registered with Claude Code");
+            steps.push("MCP server: registered");
+          } catch (regErr) {
+            console.error(`\n  Registration failed: ${regErr.message}`);
+            if (regErr.stderr) console.error(`  ${regErr.stderr.trim()}`);
             const skipReg = await confirmPrompt({ message: "Skip registration and finish setup?", default: true });
             if (!skipReg) throw regErr;
             console.log("  Registration skipped.\n");
-          } else {
-            throw regErr;
+            steps.push("MCP server: skipped (registration failed)");
           }
-        }
-        if (registered) {
-          console.log("  MCP server registered");
-          steps.push("MCP server: registered");
         } else {
-          steps.push("MCP server: skipped (malformed settings.json)");
+          console.log("  Registration: skipped (you can run `pkm-mcp-server init` again later)");
+          steps.push("MCP server: skipped");
         }
       } else {
-        console.log("  Registration: skipped (you can run `pkm-mcp-server init` again later)");
         steps.push("MCP server: skipped");
       }
-    } else {
-      steps.push("MCP server: skipped");
     }
 
     // ── Step 7: Summary ──
@@ -405,7 +391,7 @@ Nothing is written until you confirm each step. Press Ctrl+C at any time to canc
     // Determine registration summary from steps
     const regStep = steps.find(s => s.startsWith("MCP server:"));
     const registrationSummary = regStep && regStep.includes("registered")
-      ? `Registered in ${settingsPath}`
+      ? "Registered with Claude Code"
       : "Skipped";
 
     console.log(`
