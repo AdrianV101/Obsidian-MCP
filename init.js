@@ -208,8 +208,29 @@ export function patchMcpConfig(scriptContent, installType) {
   const argsJson = JSON.stringify(installType.args);
   const replacement = `MCP_CONFIG='{"mcpServers":{"obsidian-pkm":{"command":"${installType.command}","args":${argsJson},"env":{"VAULT_PATH":"'"$VAULT_PATH"'"}}}}'`;
   const lines = scriptContent.split("\n");
-  const patched = lines.map(line => line.startsWith("MCP_CONFIG=") ? replacement : line);
-  return patched.join("\n");
+  const result = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    if (lines[i].startsWith("MCP_CONFIG=")) {
+      result.push(replacement);
+      // Multi-line command substitution: contains $( but closing ) is on a later line
+      if (lines[i].includes("$(") && !lines[i].trimEnd().endsWith(")")) {
+        i++;
+        while (i < lines.length && !lines[i].trimEnd().endsWith(")")) {
+          i++;
+        }
+        i++; // skip the closing line
+      } else {
+        i++;
+      }
+    } else {
+      result.push(lines[i]);
+      i++;
+    }
+  }
+
+  return result.join("\n");
 }
 
 const PKM_HOOK_BASENAMES = new Set(["session-start.js", "stop-sweep.js", "capture-handler.sh"]);

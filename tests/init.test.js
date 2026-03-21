@@ -364,6 +364,47 @@ describe("patchMcpConfig", () => {
     const result = patchMcpConfig(noConfig, { command: "npx", args: ["-y", "pkm-mcp-server@latest"] });
     assert.equal(result, noConfig);
   });
+
+  it("replaces multi-line MCP_CONFIG=$(node -e ...) block", () => {
+    const multiLineScript = [
+      '#!/usr/bin/env bash',
+      'SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)',
+      'MCP_CONFIG=$(node -e "',
+      "  const { existsSync } = require('fs');",
+      "  const path = require('path');",
+      "  const localIndex = path.join(process.argv[1], '..', 'index.js');",
+      "  console.log(JSON.stringify({ mcpServers: { 'obsidian-pkm': server } }));",
+      '" "$SCRIPT_DIR" "${VAULT_PATH:-$HOME/Documents/PKM}")',
+      'echo "$MCP_CONFIG"',
+    ].join("\n");
+    const installType = { command: "npx", args: ["-y", "pkm-mcp-server@latest"] };
+    const result = patchMcpConfig(multiLineScript, installType);
+    // All node -e lines should be gone
+    assert.ok(!result.includes("existsSync"), "node -e body lines must be removed");
+    assert.ok(!result.includes("require('fs')"), "node -e body lines must be removed");
+    assert.ok(!result.includes('$(node -e'), "command substitution must be replaced");
+    // Replacement should be present
+    assert.ok(result.includes('"command":"npx"'));
+    assert.ok(result.includes('"args":["-y","pkm-mcp-server@latest"]'));
+    // Surrounding lines preserved
+    assert.ok(result.includes('#!/usr/bin/env bash'));
+    assert.ok(result.includes('echo "$MCP_CONFIG"'));
+    // Should have exactly 4 lines: shebang, SCRIPT_DIR, MCP_CONFIG replacement, echo
+    assert.equal(result.split("\n").length, 4);
+  });
+
+  it("handles already-patched single-line MCP_CONFIG (idempotent)", () => {
+    const patchedScript = [
+      '#!/usr/bin/env bash',
+      `MCP_CONFIG='{"mcpServers":{"obsidian-pkm":{"command":"npx","args":["-y","pkm-mcp-server@latest"],"env":{"VAULT_PATH":"'"$VAULT_PATH"'"}}}}'`,
+      'echo done',
+    ].join("\n");
+    const installType = { command: "node", args: ["/new/path/cli.js"] };
+    const result = patchMcpConfig(patchedScript, installType);
+    assert.ok(result.includes('"command":"node"'));
+    assert.ok(result.includes("/new/path/cli.js"));
+    assert.equal(result.split("\n").length, 3);
+  });
 });
 
 describe("isPkmHookEntry", () => {
