@@ -50,7 +50,7 @@ MCP_CONFIG=$(node -e "
   if (process.env.OPENAI_API_KEY) env.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   const server = useLocal
     ? { command: 'node', args: [localIndex], env }
-    : { command: 'npx', args: ['-y', 'pkm-mcp-server@latest'], env };
+    : { command: 'npx', args: ['-y', 'obsidian-pkm@latest'], env };
   console.log(JSON.stringify({ mcpServers: { 'obsidian-pkm': server } }));
 " "$SCRIPT_DIR" "${VAULT_PATH:-$HOME/Documents/PKM}")
 

@@ -38,7 +38,7 @@ export async function startServer() {
 
   // Create the server
   const server = new Server(
-    { name: "pkm-mcp-server", version: PKG_VERSION },
+    { name: "obsidian-pkm", version: PKG_VERSION },
     { capabilities: { tools: {} } }
   );
 

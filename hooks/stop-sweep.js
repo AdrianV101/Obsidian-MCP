@@ -74,7 +74,7 @@ async function main() {
     mcpServers: {
       "obsidian-pkm": useLocal
         ? { command: "node", args: [localIndex], env: mcpEnv }
-        : { command: "npx", args: ["-y", "pkm-mcp-server@latest"], env: mcpEnv },
+        : { command: "npx", args: ["-y", "obsidian-pkm@latest"], env: mcpEnv },
     },
   });
 
