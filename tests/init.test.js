@@ -309,7 +309,7 @@ describe("detectInstallType", () => {
   it("returns npx for a path inside node_modules", () => {
     const result = detectInstallType("/usr/lib/node_modules/pkm-mcp-server/init.js");
     assert.equal(result.command, "npx");
-    assert.deepEqual(result.args, ["-y", "pkm-mcp-server@latest"]);
+    assert.deepEqual(result.args, ["-y", "obsidian-pkm@latest"]);
   });
 
   it("returns node with absolute cli.js path for a source install", () => {

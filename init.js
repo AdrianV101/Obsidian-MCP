@@ -192,7 +192,7 @@ export async function dirSize(dirPath) {
 export function detectInstallType(filePath) {
   const thisFile = filePath || fileURLToPath(import.meta.url);
   if (thisFile.includes("node_modules")) {
-    return { command: "npx", args: ["-y", "pkm-mcp-server@latest"] };
+    return { command: "npx", args: ["-y", "obsidian-pkm@latest"] };
   }
   const cliPath = path.join(path.dirname(thisFile), "cli.js");
   return { command: "node", args: [cliPath] };
@@ -394,7 +394,7 @@ export async function runInit() {
   try {
     // ── Step 1: Welcome ──
     console.log(`
-pkm-mcp-server setup wizard
+obsidian-pkm setup wizard
 
 This will walk you through setting up your Obsidian vault for use with the
 PKM MCP server. You'll be asked about 6 things:
@@ -508,7 +508,7 @@ Nothing is written until you confirm each step. Press Ctrl+C at any time to canc
 
       let skipRegistration = false;
       if (hasExisting) {
-        const overwrite = await confirmPrompt({ message: "Claude Code is already configured for pkm-mcp-server. Overwrite?", default: false });
+        const overwrite = await confirmPrompt({ message: "Claude Code is already configured for obsidian-pkm. Overwrite?", default: false });
         if (!overwrite) {
           console.log("  Registration skipped.\n");
           skipRegistration = true;
@@ -548,7 +548,7 @@ Nothing is written until you confirm each step. Press Ctrl+C at any time to canc
             steps.push("MCP server: skipped (registration failed)");
           }
         } else {
-          console.log("  Registration: skipped (you can run `pkm-mcp-server init` again later)");
+          console.log("  Registration: skipped (you can run `obsidian-pkm init` again later)");
           steps.push("MCP server: skipped");
         }
       } else {

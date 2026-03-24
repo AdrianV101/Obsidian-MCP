@@ -1,13 +1,13 @@
 {
-  "name": "pkm-mcp-server",
-  "version": "1.6.1",
-  "description": "MCP server for Obsidian vault integration with Claude Code — 19 tools for notes, search, and graph traversal",
+  "name": "obsidian-pkm",
+  "version": "2.0.0",
+  "description": "Claude Code plugin for Obsidian vault integration — 19 MCP tools, hooks, and skills for PKM",
   "main": "cli.js",
   "exports": {
     ".": "./cli.js"
   },
   "bin": {
-    "pkm-mcp-server": "cli.js"
+    "obsidian-pkm": "cli.js"
   },
   "type": "module",
   "engines": {
@@ -19,7 +19,11 @@
     "CHANGELOG.md",
     "hooks/",
     "templates/",
-    "sample-project/"
+    "sample-project/",
+    ".claude-plugin/",
+    "commands/",
+    "skills/",
+    ".mcp.json"
   ],
   "scripts": {
     "start": "node cli.js",
@@ -29,7 +33,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AdrianV101/Obsidian-MCP.git"
+    "url": "git+https://github.com/AdrianV101/obsidian-pkm-plugin.git"
   },
   "author": "Adrian Verhoosel",
   "license": "MIT",
@@ -45,11 +49,13 @@
     "markdown",
     "notes",
     "semantic-search",
-    "wikilinks"
+    "wikilinks",
+    "plugin",
+    "hooks"
   ],
-  "homepage": "https://github.com/AdrianV101/Obsidian-MCP#readme",
+  "homepage": "https://github.com/AdrianV101/obsidian-pkm-plugin#readme",
   "bugs": {
-    "url": "https://github.com/AdrianV101/Obsidian-MCP/issues"
+    "url": "https://github.com/AdrianV101/obsidian-pkm-plugin/issues"
   },
   "dependencies": {
     "@inquirer/prompts": "^8.3.2",

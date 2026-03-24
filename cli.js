@@ -11,13 +11,13 @@ try {
   } else if (subcommand === "--version" || subcommand === "-v") {
     const require = createRequire(import.meta.url);
     const { version } = require("./package.json");
-    console.log(`pkm-mcp-server v${version}`);
+    console.log(`obsidian-pkm v${version}`);
   } else if (!subcommand) {
     const { startServer } = await import("./index.js");
     await startServer();
   } else {
     console.error(`Unknown command: ${subcommand}`);
-    console.error("Usage: pkm-mcp-server [init]");
+    console.error("Usage: obsidian-pkm [init]");
     process.exit(1);
   }
 } catch (e) {
