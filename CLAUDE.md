@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a PKM (Personal Knowledge Management) + Claude Code Integration Starter Kit. It provides an MCP server that enables bidirectional knowledge flow between Claude Code and an Obsidian vault.
+This is a Claude Code plugin that provides an MCP server and supporting tools for bidirectional knowledge flow between Claude Code and an Obsidian vault. It packages 19 MCP tools, Claude Code hooks, and a setup skill under the `obsidian-pkm` plugin identity.
 
 ## Commands
 
@@ -174,7 +174,7 @@ Read-only tools (`vault_read`, `vault_peek`, `vault_links`, `vault_neighborhood`
 
 Folder-scoped tools (`vault_search`, `vault_query`, `vault_tags`, `vault_recent`) support fuzzy folder resolution:
 - Exact folder paths still work as before
-- Partial names match by substring: `"Obsidian-MCP"` → `"01-Projects/Obsidian-MCP"`
+- Partial names match by substring: `"MyApp"` → `"01-Projects/MyApp"`
 - Ambiguous matches return an error listing candidates
 
 Write/destructive tools (`vault_write`, `vault_append`, `vault_edit`, `vault_trash`, `vault_move`) require exact paths to prevent accidental modifications.
@@ -200,17 +200,26 @@ Implementation: `helpers.js` (`buildBasenameMap`, `resolveFuzzyPath`, `resolveFu
 
 ## Claude Code Configuration
 
-Register the MCP server using the CLI:
+**Via Claude Code plugin marketplace** (recommended):
 
 ```bash
-# Interactive setup (recommended)
-pkm-mcp-server init
+claude plugin marketplace add AdrianV101/obsidian-pkm-plugin
+claude plugin install obsidian-pkm
+```
+
+Then run `/obsidian-pkm:setup` in Claude Code.
+
+**Via npm** (fallback):
+
+```bash
+# Interactive setup
+obsidian-pkm init
 
 # Or register manually
 claude mcp add -s user \
   -e VAULT_PATH=/absolute/path/to/obsidian/vault \
   -e OPENAI_API_KEY=sk-... \
-  -- obsidian-pkm npx -y pkm-mcp-server@latest
+  -- obsidian-pkm npx -y obsidian-pkm@latest
 ```
 
 `OPENAI_API_KEY` is optional — without it, all tools except `vault_semantic_search` and `vault_suggest_links` work normally.

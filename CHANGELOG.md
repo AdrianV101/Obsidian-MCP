@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-03-24
+
+### Breaking Changes
+- **Package renamed**: `pkm-mcp-server` → `obsidian-pkm`
+- **CLI binary renamed**: `pkm-mcp-server` → `obsidian-pkm`
+- **GitHub repo renamed**: `Obsidian-MCP` → `obsidian-pkm-plugin`
+
+### Added
+- Claude Code plugin structure (`.claude-plugin/plugin.json`)
+- Declarative hook registration (`hooks/hooks.json`) — no more manual hook copying
+- `/obsidian-pkm:setup` slash command for guided configuration
+- Self-hosted marketplace for `claude plugin install` support
+- `.mcp.json` for plugin-managed MCP server
+
+### Changed
+- Version jump from 1.6.x to 2.0.0 reflects the structural migration to a full plugin
+- Init wizard simplified for npm fallback path
+
 ## [1.6.0] - 2026-03-23
 
 ### Security
@@ -193,21 +211,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Atomic file creation in `vault_write` (`wx` flag) prevents race conditions
 - Error messages sanitized to prevent leaking absolute vault paths
 
-[Unreleased]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.6.0...HEAD
-[1.6.0]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.5.3...v1.6.0
-[1.5.3]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.5.2...v1.5.3
-[1.5.2]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.5.1...v1.5.2
-[1.5.1]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.5.0...v1.5.1
-[1.5.0]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.4.2...v1.5.0
-[1.4.2]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.4.1...v1.4.2
-[1.4.1]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.4.0...v1.4.1
-[1.4.0]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.3.3...v1.4.0
-[1.3.3]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.3.2...v1.3.3
-[1.3.2]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.3.1...v1.3.2
-[1.3.1]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.3.0...v1.3.1
-[1.3.0]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.2.1...v1.3.0
-[1.2.1]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.2.0...v1.2.1
-[1.2.0]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.1.1...v1.2.0
-[1.1.1]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.1.0...v1.1.1
-[1.1.0]: https://github.com/AdrianV101/Obsidian-MCP/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/AdrianV101/Obsidian-MCP/releases/tag/v1.0.0
+[Unreleased]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.6.0...v2.0.0
+[1.6.0]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.5.3...v1.6.0
+[1.5.3]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.5.2...v1.5.3
+[1.5.2]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.5.1...v1.5.2
+[1.5.1]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.5.0...v1.5.1
+[1.5.0]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.4.2...v1.5.0
+[1.4.2]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.4.1...v1.4.2
+[1.4.1]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.4.0...v1.4.1
+[1.4.0]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.3.3...v1.4.0
+[1.3.3]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.3.2...v1.3.3
+[1.3.2]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.3.1...v1.3.2
+[1.3.1]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.2.1...v1.3.0
+[1.2.1]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.2.0...v1.2.1
+[1.2.0]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.1.1...v1.2.0
+[1.1.1]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.1.0...v1.1.1
+[1.1.0]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/AdrianV101/obsidian-pkm-plugin/releases/tag/v1.0.0

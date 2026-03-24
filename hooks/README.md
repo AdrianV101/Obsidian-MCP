@@ -39,7 +39,7 @@ Add the following to your `~/.claude/settings.json`:
         "hooks": [
           {
             "type": "command",
-            "command": "VAULT_PATH=\"/path/to/your/vault\" node /path/to/Obsidian-MCP/hooks/session-start.js",
+            "command": "VAULT_PATH=\"/path/to/your/vault\" node /path/to/obsidian-pkm-plugin/hooks/session-start.js",
             "timeout": 15,
             "statusMessage": "Loading PKM project context..."
           }
@@ -51,7 +51,7 @@ Add the following to your `~/.claude/settings.json`:
         "hooks": [
           {
             "type": "command",
-            "command": "VAULT_PATH=\"/path/to/your/vault\" node /path/to/Obsidian-MCP/hooks/stop-sweep.js",
+            "command": "VAULT_PATH=\"/path/to/your/vault\" node /path/to/obsidian-pkm-plugin/hooks/stop-sweep.js",
             "async": true,
             "timeout": 10
           }
@@ -64,7 +64,7 @@ Add the following to your `~/.claude/settings.json`:
         "hooks": [
           {
             "type": "command",
-            "command": "VAULT_PATH=\"/path/to/your/vault\" /path/to/Obsidian-MCP/hooks/capture-handler.sh",
+            "command": "VAULT_PATH=\"/path/to/your/vault\" /path/to/obsidian-pkm-plugin/hooks/capture-handler.sh",
             "async": true,
             "timeout": 10
           }
@@ -75,7 +75,7 @@ Add the following to your `~/.claude/settings.json`:
 }
 ```
 
-Replace `/path/to/your/vault` with the absolute path to your Obsidian vault (e.g., `~/Documents/PKM`), and `/path/to/Obsidian-MCP` with the absolute path to this repository.
+Replace `/path/to/your/vault` with the absolute path to your Obsidian vault (e.g., `~/Documents/PKM`), and `/path/to/obsidian-pkm-plugin` with the absolute path to this repository.
 
 ## Architecture Notes
 

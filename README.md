@@ -1,11 +1,11 @@
-# Obsidian PKM MCP Server
+# Obsidian PKM Plugin
 
-[![npm version](https://img.shields.io/npm/v/pkm-mcp-server)](https://www.npmjs.com/package/pkm-mcp-server)
+[![npm version](https://img.shields.io/npm/v/obsidian-pkm)](https://www.npmjs.com/package/obsidian-pkm)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js >= 20](https://img.shields.io/badge/Node.js-%3E%3D20-green.svg)](https://nodejs.org/)
-[![CI](https://github.com/AdrianV101/Obsidian-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/AdrianV101/Obsidian-MCP/actions/workflows/ci.yml)
+[![CI](https://github.com/AdrianV101/obsidian-pkm-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/AdrianV101/obsidian-pkm-plugin/actions/workflows/ci.yml)
 
-A personal knowledge management system powered by [MCP](https://modelcontextprotocol.io/) that turns your Obsidian vault into persistent, structured memory for AI coding assistants. 19 tools for note creation, semantic search, graph traversal, metadata queries, session memory, and passive knowledge capture — published on npm as [`pkm-mcp-server`](https://www.npmjs.com/package/pkm-mcp-server).
+A Claude Code plugin that turns your Obsidian vault into persistent, structured memory for AI coding assistants. Provides 19 MCP tools for note creation, semantic search, graph traversal, metadata queries, session memory, and passive knowledge capture — plus hooks and skills for seamless workflow integration. Published on npm as [`obsidian-pkm`](https://www.npmjs.com/package/obsidian-pkm).
 
 ## Why
 
@@ -85,11 +85,26 @@ https://github.com/user-attachments/assets/58ad9c9b-d987-4728-89e7-33de20b73a38
 
 ### 1. Install and Set Up
 
-**From npm** (recommended):
+**Via Claude Code plugin marketplace** (recommended):
 
 ```bash
-npm install -g pkm-mcp-server
-pkm-mcp-server init
+claude plugin marketplace add AdrianV101/obsidian-pkm-plugin
+claude plugin install obsidian-pkm
+```
+
+Then run the setup skill in Claude Code:
+
+```
+/obsidian-pkm:setup
+```
+
+The setup skill walks you through vault path, templates, folder structure, semantic search, and Claude Code registration.
+
+**Via npm** (fallback):
+
+```bash
+npm install -g obsidian-pkm
+obsidian-pkm init
 ```
 
 The setup wizard walks you through vault path, templates, folder structure, semantic search, and Claude Code registration. Nothing is written until you confirm each step, and you can press Ctrl+C at any time to cancel.
@@ -131,20 +146,20 @@ Restart Claude Code after setup. The server provides all tools except semantic s
 **From source:**
 
 ```bash
-git clone https://github.com/AdrianV101/Obsidian-MCP.git
-cd Obsidian-MCP
+git clone https://github.com/AdrianV101/obsidian-pkm-plugin.git
+cd obsidian-pkm-plugin
 npm install
 node cli.js init
 ```
 
-You can also run the wizard without a global install: `npx pkm-mcp-server init`.
+You can also run the wizard without a global install: `npx obsidian-pkm init`.
 
 ### 2. Manual Registration (alternative)
 
 If you prefer to skip the wizard, register directly with the Claude CLI:
 
 ```bash
-claude mcp add -s user -e VAULT_PATH=/absolute/path/to/your/vault -- obsidian-pkm npx -y pkm-mcp-server@latest
+claude mcp add -s user -e VAULT_PATH=/absolute/path/to/your/vault -- obsidian-pkm npx -y obsidian-pkm@latest
 ```
 
 For a source install:
@@ -172,7 +187,7 @@ claude mcp remove obsidian-pkm
 claude mcp add -s user \
   -e VAULT_PATH=/absolute/path/to/your/vault \
   -e OPENAI_API_KEY=sk-... \
-  -- obsidian-pkm npx -y pkm-mcp-server@latest
+  -- obsidian-pkm npx -y obsidian-pkm@latest
 ```
 
 This enables `vault_semantic_search` and `vault_suggest_links`. Uses `text-embedding-3-large` with a SQLite + sqlite-vec index stored at `.obsidian/semantic-index.db`. The index rebuilds automatically — delete the DB file to force a full re-embed.
@@ -192,7 +207,7 @@ Add to your `~/.claude/settings.json` (alongside the `mcpServers` block):
         "hooks": [
           {
             "type": "command",
-            "command": "VAULT_PATH=\"/path/to/your/vault\" node /path/to/Obsidian-MCP/hooks/session-start.js",
+            "command": "VAULT_PATH=\"/path/to/your/vault\" node /path/to/obsidian-pkm-plugin/hooks/session-start.js",
             "timeout": 15,
             "statusMessage": "Loading PKM project context..."
           }
@@ -204,7 +219,7 @@ Add to your `~/.claude/settings.json` (alongside the `mcpServers` block):
         "hooks": [
           {
             "type": "command",
-            "command": "VAULT_PATH=\"/path/to/your/vault\" node /path/to/Obsidian-MCP/hooks/stop-sweep.js",
+            "command": "VAULT_PATH=\"/path/to/your/vault\" node /path/to/obsidian-pkm-plugin/hooks/stop-sweep.js",
             "async": true,
             "timeout": 10
           }
@@ -217,7 +232,7 @@ Add to your `~/.claude/settings.json` (alongside the `mcpServers` block):
         "hooks": [
           {
             "type": "command",
-            "command": "VAULT_PATH=\"/path/to/your/vault\" /path/to/Obsidian-MCP/hooks/capture-handler.sh",
+            "command": "VAULT_PATH=\"/path/to/your/vault\" /path/to/obsidian-pkm-plugin/hooks/capture-handler.sh",
             "async": true,
             "timeout": 10
           }
@@ -228,7 +243,7 @@ Add to your `~/.claude/settings.json` (alongside the `mcpServers` block):
 }
 ```
 
-Replace `/path/to/your/vault` with your Obsidian vault path and `/path/to/Obsidian-MCP` with the path to this repo (or the global npm install location).
+Replace `/path/to/your/vault` with your Obsidian vault path and `/path/to/obsidian-pkm-plugin` with the path to this repo (or the global npm install location).
 
 | Hook | Event | What it does |
 |------|-------|--------------|
@@ -260,7 +275,7 @@ Vault/
 
 ### Templates
 
-`vault_write` loads all `.md` files from `05-Templates/` at startup and enforces frontmatter on every note created. The setup wizard (`pkm-mcp-server init`) installs these automatically — or you can copy the files from `templates/` manually.
+`vault_write` loads all `.md` files from `05-Templates/` at startup and enforces frontmatter on every note created. The setup wizard (`obsidian-pkm init`) installs these automatically — or you can copy the files from `templates/` manually.
 
 13 included templates: `adr`, `daily-note`, `devlog`, `fleeting-note`, `literature-note`, `meeting-notes`, `moc`, `note`, `permanent-note`, `project-index`, `research-note`, `task`, `troubleshooting-log`. Add your own templates to `05-Templates/` and they become available to `vault_write` automatically.
 
@@ -312,7 +327,7 @@ All paths passed to tools are relative to vault root. The server includes path s
 
 **Passive capture** uses `vault_capture` to signal that something is worth persisting (a decision, task, research finding, or bug). The tool returns immediately — a PostToolUse hook spawns a background agent that creates the structured vault note. Combined with the Stop hook (which sweeps each session for un-captured knowledge), this keeps your vault up to date without interrupting the coding flow.
 
-**Fuzzy path resolution** lets read-only tools accept short names instead of full vault paths. `vault_read({ path: "devlog" })` resolves to `01-Projects/Obsidian-MCP/development/devlog.md` automatically (`.md` extension optional). Folder-scoped tools like `vault_search` and `vault_query` accept partial folder names — `folder: "Obsidian-MCP"` resolves to `01-Projects/Obsidian-MCP`. Ambiguous matches return an error listing candidates. Write/destructive tools always require exact paths.
+**Fuzzy path resolution** lets read-only tools accept short names instead of full vault paths. `vault_read({ path: "devlog" })` resolves to `01-Projects/MyApp/development/devlog.md` automatically (`.md` extension optional). Folder-scoped tools like `vault_search` and `vault_query` accept partial folder names — `folder: "MyApp"` resolves to `01-Projects/MyApp`. Ambiguous matches return an error listing candidates. Write/destructive tools always require exact paths.
 
 ## Troubleshooting
 
@@ -320,10 +335,10 @@ All paths passed to tools are relative to vault root. The server includes path s
 You need C++ build tools. See [Prerequisites](#prerequisites) for your platform. On Linux, `sudo apt install build-essential python3` usually fixes it.
 
 **Server starts but all tool calls fail with ENOENT**
-Your `VAULT_PATH` is wrong or missing. The server validates this at startup and exits with a clear error. Re-register with the correct path: `claude mcp remove obsidian-pkm && claude mcp add -s user -e VAULT_PATH=/correct/path -- obsidian-pkm npx -y pkm-mcp-server@latest`
+Your `VAULT_PATH` is wrong or missing. The server validates this at startup and exits with a clear error. Re-register with the correct path: `claude mcp remove obsidian-pkm && claude mcp add -s user -e VAULT_PATH=/correct/path -- obsidian-pkm npx -y obsidian-pkm@latest`
 
 **`vault_write` says "no templates available"**
-Run `pkm-mcp-server init` to install templates, or copy the `templates/` files from this repo into your vault's `05-Templates/` directory. The server loads templates from there at startup.
+Run `obsidian-pkm init` to install templates, or copy the `templates/` files from this repo into your vault's `05-Templates/` directory. The server loads templates from there at startup.
 
 **Semantic search not appearing in tool list**
 Set `OPENAI_API_KEY` in your MCP server registration. See [Enable Semantic Search](#4-enable-semantic-search-optional). Without it, `vault_semantic_search` and `vault_suggest_links` are hidden entirely.

@@ -4,7 +4,7 @@ Thanks for your interest in contributing! Here's how to get started.
 
 ## First-Time Contributors
 
-New to this project? We'd love your help! Check the [issue tracker](https://github.com/AdrianV101/Obsidian-MCP/issues) for issues labeled **"good first issue"** -- these are specifically chosen as approachable entry points. Don't hesitate to ask questions on any issue; we're happy to provide guidance.
+New to this project? We'd love your help! Check the [issue tracker](https://github.com/AdrianV101/obsidian-pkm-plugin/issues) for issues labeled **"good first issue"** -- these are specifically chosen as approachable entry points. Don't hesitate to ask questions on any issue; we're happy to provide guidance.
 
 ## Code of Conduct
 
