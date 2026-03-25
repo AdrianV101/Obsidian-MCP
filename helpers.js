@@ -897,3 +897,17 @@ export function updateFrontmatter(content, fields) {
 
   return { content: newContent, frontmatter: { ...parsed } };
 }
+
+/**
+ * Compute a proximity bonus for graph-semantic blending.
+ * Maps graph depth to a 0-1 score for combining with semantic similarity.
+ * @param {number|null|undefined} depth - hop distance from center (null = not in graph)
+ * @returns {number} proximity bonus (0-1)
+ */
+export function computeProximityBonus(depth) {
+  if (depth === null || depth === undefined) return 0;
+  if (depth <= 1) return 1.0;
+  if (depth === 2) return 0.5;
+  if (depth === 3) return 0.25;
+  return 0;
+}

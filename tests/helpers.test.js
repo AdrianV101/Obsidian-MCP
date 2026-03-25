@@ -26,6 +26,7 @@ import {
   AUTO_REDIRECT_THRESHOLD,
   FORCE_HARD_CAP,
   CHUNK_SIZE,
+  computeProximityBonus,
 } from "../helpers.js";
 
 describe("resolvePath", () => {
@@ -1278,5 +1279,28 @@ describe("compareFrontmatterValues", () => {
     const d1 = new Date("2026-01-01");
     const d2 = new Date("2026-06-15");
     assert.ok(compareFrontmatterValues(d1, d2, "created") < 0);
+  });
+});
+
+describe("computeProximityBonus", () => {
+  it("returns 1.0 for depth 0 (self)", () => {
+    assert.equal(computeProximityBonus(0), 1.0);
+  });
+  it("returns 1.0 for depth 1 (direct neighbor)", () => {
+    assert.equal(computeProximityBonus(1), 1.0);
+  });
+  it("returns 0.5 for depth 2", () => {
+    assert.equal(computeProximityBonus(2), 0.5);
+  });
+  it("returns 0.25 for depth 3", () => {
+    assert.equal(computeProximityBonus(3), 0.25);
+  });
+  it("returns 0 for depth 4+", () => {
+    assert.equal(computeProximityBonus(4), 0);
+    assert.equal(computeProximityBonus(10), 0);
+  });
+  it("returns 0 for null/undefined (not in graph)", () => {
+    assert.equal(computeProximityBonus(null), 0);
+    assert.equal(computeProximityBonus(undefined), 0);
   });
 });
