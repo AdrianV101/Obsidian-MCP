@@ -468,7 +468,15 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
             query: { type: "string", description: "Natural language search query (e.g., 'managing information overload')" },
             limit: { type: "number", description: "Max results to return (default: 5)", default: 5 },
             folder: { type: "string", description: "Optional: limit search to this folder (e.g., '01-Projects')" },
-            threshold: { type: "number", description: "Minimum similarity score 0-1 (default: no threshold)" }
+            threshold: { type: "number", description: "Minimum similarity score 0-1 (default: no threshold)" },
+            anchor: {
+              type: "string",
+              description: "Vault-relative path of a note to bias results toward (graph-distance weighting). Results closer to the anchor in the wikilink graph rank higher."
+            },
+            graph_weight: {
+              type: "number",
+              description: "Weight of graph proximity vs semantic similarity (0-1, default: 0.3). Higher values bias more toward graph neighbors."
+            }
           },
           required: ["query"]
         }

@@ -1684,6 +1684,92 @@ describe("vault_suggest_links graph_context", () => {
   });
 });
 
+// ─── vault_semantic_search anchor ──────────────────────────────────────
+
+describe("vault_semantic_search anchor", () => {
+  it("blends semantic scores with graph proximity when anchor is provided", async () => {
+    const mockResults = [
+      { path: "notes/beta.md", score: 0.8, preview: "Beta content" },
+      { path: "notes/gamma.md", score: 0.9, preview: "Gamma content" },
+    ];
+    const freshHandlers = await createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry: await buildTemplateRegistry(tmpDir),
+      semanticIndex: createMockSemanticIndex(mockResults),
+      activityLog: null,
+      sessionId: "test"
+    });
+    const result = await freshHandlers.get("vault_semantic_search")({
+      query: "test query",
+      anchor: "notes/alpha.md"
+    });
+    const text = result.content[0].text;
+    assert.ok(text.includes("combined:"));
+    assert.ok(text.includes("semantic:"));
+  });
+
+  it("uses default graph_weight of 0.3", async () => {
+    const mockResults = [
+      { path: "notes/beta.md", score: 0.8, preview: "Beta" },
+    ];
+    const freshHandlers = await createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry: await buildTemplateRegistry(tmpDir),
+      semanticIndex: createMockSemanticIndex(mockResults),
+      activityLog: null,
+      sessionId: "test"
+    });
+    // beta is at depth 1 from alpha (alpha links to beta), proximity = 1.0
+    // combined = (0.8 * 0.7) + (1.0 * 0.3) = 0.56 + 0.3 = 0.86
+    const result = await freshHandlers.get("vault_semantic_search")({
+      query: "test",
+      anchor: "notes/alpha.md"
+    });
+    const text = result.content[0].text;
+    assert.ok(text.includes("0.86"));
+  });
+
+  it("respects custom graph_weight", async () => {
+    const mockResults = [
+      { path: "notes/beta.md", score: 0.8, preview: "Beta" },
+    ];
+    const freshHandlers = await createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry: await buildTemplateRegistry(tmpDir),
+      semanticIndex: createMockSemanticIndex(mockResults),
+      activityLog: null,
+      sessionId: "test"
+    });
+    // beta at depth 1, proximity = 1.0
+    // combined = (0.8 * 0.5) + (1.0 * 0.5) = 0.4 + 0.5 = 0.9
+    const result = await freshHandlers.get("vault_semantic_search")({
+      query: "test",
+      anchor: "notes/alpha.md",
+      graph_weight: 0.5
+    });
+    const text = result.content[0].text;
+    assert.ok(text.includes("0.9"));
+  });
+
+  it("preserves normal behavior without anchor", async () => {
+    const mockResults = [
+      { path: "notes/beta.md", score: 0.8, preview: "Beta" },
+    ];
+    const freshHandlers = await createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry: await buildTemplateRegistry(tmpDir),
+      semanticIndex: createMockSemanticIndex(mockResults),
+      activityLog: null,
+      sessionId: "test"
+    });
+    const result = await freshHandlers.get("vault_semantic_search")({
+      query: "test"
+    });
+    const text = result.content[0].text;
+    assert.ok(!text.includes("combined:"));
+  });
+});
+
 // ─── vault_list glob matching (H1 ReDoS fix) ─────────────────────────
 
 describe("handleList glob pattern matching", () => {

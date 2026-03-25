@@ -675,6 +675,58 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     if (!semanticIndex?.isAvailable) {
       throw new Error("Semantic search not available (OPENAI_API_KEY not set)");
     }
+
+    // --- Anchor blending (Tier 3) ---
+    if (args.anchor) {
+      const resolvedAnchor = resolveFuzzyPath(args.anchor, basenameMap, allFilesSet);
+      const targetLimit = args.limit || 5;
+      const rawResults = await semanticIndex.searchRaw({
+        query: args.query,
+        limit: targetLimit * 2,
+        folder: args.folder,
+        threshold: args.threshold
+      });
+
+      const neighborhood = await exploreNeighborhood({
+        startPath: resolvedAnchor,
+        vaultPath,
+        depth: 3,
+        direction: "both",
+      });
+
+      const depthMap = new Map();
+      for (const [d, nodes] of neighborhood.depthGroups) {
+        for (const node of nodes) {
+          if (!depthMap.has(node.path)) depthMap.set(node.path, d);
+        }
+      }
+
+      const graphWeight = args.graph_weight ?? 0.3;
+      const blended = rawResults.map(r => {
+        const depth = depthMap.get(r.path) ?? null;
+        const proximity = computeProximityBonus(depth);
+        const combined = Math.round(((r.score * (1 - graphWeight)) + (proximity * graphWeight)) * 1000) / 1000;
+        return { ...r, combined, depth };
+      });
+
+      blended.sort((a, b) => b.combined - a.combined);
+      const trimmed = blended.slice(0, targetLimit);
+
+      if (trimmed.length === 0) {
+        return { content: [{ type: "text", text: "No semantically related notes found." }] };
+      }
+
+      const formatted = trimmed.map(r => {
+        const graphInfo = r.depth !== null ? `graph: depth ${r.depth}` : "not in graph";
+        return `**${r.path}** (combined: ${r.combined}, semantic: ${r.score}, ${graphInfo})\n${r.preview}`;
+      }).join("\n\n");
+
+      return {
+        content: [{ type: "text", text: `Found ${trimmed.length} result${trimmed.length === 1 ? "" : "s"} (anchored to ${args.anchor}):\n\n${formatted}` }]
+      };
+    }
+
+    // Normal path (no anchor)
     const text = await semanticIndex.search({
       query: args.query,
       limit: args.limit || 5,
