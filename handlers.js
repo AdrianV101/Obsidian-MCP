@@ -957,7 +957,7 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
         ...resolveLink(link, basenameMap, allFilesSet)
       }));
       const fm = extractFrontmatter(content);
-      fileData.set(file, { outgoing, resolved, frontmatter: fm });
+      fileData.set(file, { resolved, frontmatter: fm });
     }
 
     // Build incoming index once — O(M) instead of per-file findFilesLinkingTo O(N*M)
@@ -990,6 +990,7 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
         for (const r of data.resolved) {
           if (r.paths.length === 0) {
             broken.push(`- ${file} → [[${r.raw}]] (no matching file)`);
+            if (broken.length >= limit) break;
           }
         }
         if (broken.length >= limit) break;
@@ -1023,6 +1024,7 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
           if (r.ambiguous && !seen.has(r.raw)) {
             seen.add(r.raw);
             ambiguous.push(`- ${file} → [[${r.raw}]] resolves to ${r.paths.length} files`);
+            if (ambiguous.length >= limit) break;
           }
         }
         if (ambiguous.length >= limit) break;

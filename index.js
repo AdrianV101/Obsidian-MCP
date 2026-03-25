@@ -420,6 +420,33 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
           },
           required: ["path", "links"]
         }
+      },
+      {
+        name: "vault_link_health",
+        description: "Graph health report — finds orphan notes, broken wikilinks, weakly connected notes, " +
+          "and ambiguous links. Scans all markdown files (or a specific folder). " +
+          "Use to audit link quality and find notes that need better connections.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            folder: {
+              type: "string",
+              description: "Optional: scope to this folder (supports fuzzy folder resolution, e.g., 'MyApp')"
+            },
+            checks: {
+              type: "array",
+              items: {
+                type: "string",
+                enum: ["orphans", "broken", "weak", "ambiguous"]
+              },
+              description: "Which checks to run (default: all four). orphans = no links in/out, broken = links to missing files, weak = only 1 total link, ambiguous = basename resolves to multiple files"
+            },
+            limit: {
+              type: "number",
+              description: "Max results per category (default: 20)"
+            }
+          }
+        }
       }
     ];
 
