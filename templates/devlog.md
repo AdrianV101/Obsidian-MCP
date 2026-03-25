@@ -10,26 +10,21 @@ tags:
 
 This log tracks development progress, decisions made, and lessons learned.
 
----
+## Sessions
 
-## <% tp.date.now("YYYY-MM-DD") %>
+### <% tp.date.now("YYYY-MM-DD HH:mm") %>
 
-### Session Summary
+#### Session Summary
 <!-- What was accomplished in this session? -->
 
 
-### Key Decisions
+#### Key Decisions
 <!-- Any decisions made (link to ADRs if created) -->
 
 
-### Blockers / Issues
+#### Blockers / Issues
 <!-- What problems were encountered? -->
 
 
-### Next Steps
+#### Next Steps
 <!-- What should be done in the next session? -->
-
-
----
-
-<!-- New entries are added above this line -->

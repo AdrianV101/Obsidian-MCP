@@ -76,7 +76,8 @@ export async function loadProjectContext(vaultPath, projectPath) {
     const devlogContent = await fs.readFile(
       path.join(projectDir, "development", "devlog.md"), "utf-8"
     );
-    const tailSections = extractTailSections(devlogContent, 3, 2);
+    const sectionLevel = /^## Sessions\s*$/m.test(devlogContent) ? 3 : 2;
+    const tailSections = extractTailSections(devlogContent, 3, sectionLevel);
     sections.push(`### Recent Development Activity\n${tailSections}`);
   } catch (e) {
     if (e.code !== "ENOENT") console.error("PKM load-context: error reading devlog:", e.message);

@@ -136,7 +136,7 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
           properties: {
             path: { type: "string", description: "Path relative to vault root" },
             content: { type: "string", description: "Content to append" },
-            heading: { type: "string", description: "Optional: append under this heading (e.g., '## Recent Activity')" },
+            heading: { type: "string", description: "Optional: append under this heading (e.g., '## Notes')" },
             position: { type: "string", enum: ["after_heading", "before_heading", "end_of_section"], description: "Where to insert relative to heading. after_heading: right after the heading line. before_heading: right before the heading line. end_of_section: at the end of the section (before the next same-or-higher-level heading, or EOF). Requires heading." }
           },
           required: ["path", "content"]

@@ -9,30 +9,42 @@ Run this workflow when wrapping up a session to ensure no knowledge is lost and 
 
 ## Step 1: Devlog Entry
 
-Append a session summary to the project devlog, most recent entry first:
+Append a session summary to the project devlog, most recent entry first.
+
+**If the devlog file doesn't exist yet** (new project, first session), create it first:
+
+```
+vault_write({
+  template: "devlog",
+  path: "01-Projects/<Project>/development/devlog.md",
+  frontmatter: { tags: ["devlog"], project: "<Project>" }
+})
+```
+
+Then append the session entry:
 
 ```
 vault_append({
   path: "01-Projects/<Project>/development/devlog.md",
-  heading: "## Recent Activity",
+  heading: "## Sessions",
   position: "after_heading",
-  content: "## YYYY-MM-DD\n\n### Session Summary\n- <what was accomplished>\n\n### Key Decisions\n- <decisions made, link to ADRs if created>\n\n### Next Steps\n- <what remains>\n\n---\n"
+  content: "### YYYY-MM-DD HH:mm\n\n#### Session Summary\n- <what was accomplished>\n\n#### Key Decisions\n- <decisions made, link to ADRs if created>\n\n#### Blockers / Issues\n- <problems encountered, or \"None\">\n\n#### Next Steps\n- <what remains>\n\n---\n"
 })
 ```
 
-Use the **actual date** and fill in real content from the session. Keep entries concise but specific.
+Use the **actual date** and fill in real content from the session. Keep entries concise but specific. Using `after_heading` inserts each new entry at the top, keeping the log in reverse-chronological order.
 
-**Note**: The `## Recent Activity` heading must exist in the devlog file. If it doesn't (fresh devlog from template), first append it: `vault_append({ path: "...", content: "\n## Recent Activity\n" })`.
+**Existing devlogs**: Older devlogs may use `## YYYY-MM-DD` entries without a `## Sessions` heading. If `vault_append` fails with "Heading not found", add the heading first: `vault_append({ path: "...", content: "\n## Sessions\n" })`.
 
 ## Step 2: Review Session Work
 
 Query the activity log to find all notes created or modified this session:
 
 ```
-vault_activity({ limit: 50 })
+vault_activity({ session: "<current-session-id>", limit: 50 })
 ```
 
-Filter to the current session's entries. Note which files were created, modified, and searched.
+The session ID appears in any prior `vault_activity` response. Note which files were created, modified, and searched.
 
 ## Step 3: Capture Undocumented Work
 
@@ -65,7 +77,7 @@ For each under-connected note found in step 4:
 vault_suggest_links({ path: "<under-connected-note>", limit: 5 })
 ```
 
-If `vault_suggest_links` is unavailable (no `OPENAI_API_KEY`), use `vault_search` with the note's title and key terms to find link candidates manually.
+If `vault_suggest_links` is unavailable (no `OPENAI_API_KEY`), use `vault_search` with the note's title and key terms, and `vault_query` with matching tags to find link candidates manually.
 
 Draft annotations and insert the top 3–5 links using:
 

@@ -32,7 +32,7 @@ Explore the structural neighborhood around the seed note:
 vault_neighborhood({ path: "<seed-note-path>", depth: 2, direction: "both" })
 ```
 
-This reveals the **intentional** knowledge structure — what someone explicitly linked.
+This reveals the **intentional** knowledge structure — what someone explicitly linked. If the seed note has no links (new or isolated note), this is expected — rely on Step 3 results for connection discovery.
 
 ## Step 3: Semantic Expansion
 
@@ -54,11 +54,13 @@ Compare the graph results (step 2) with semantic results (step 3):
 | In graph but NOT semantic | Structurally linked but topically distant | May indicate weak/outdated link |
 | **In semantic but NOT graph** | **Missing links** — conceptually related but unconnected | **Highest-value findings** — suggest linking |
 
+**Note**: If Step 3 used `vault_search`/`vault_query` (no `OPENAI_API_KEY`), the gap analysis is less precise — text search misses conceptually related notes that use different terminology. Flag this reduced fidelity when presenting findings.
+
 ## Step 5: Synthesize
 
 Present findings to the user organized as:
 
 1. **What exists**: Key notes on this topic with brief summaries (type, status, tags)
 2. **How it's connected**: Graph structure — which notes link to which, at what depth
-3. **Missing links**: Semantically related notes not yet in the graph (candidates for linking)
+3. **Missing links**: Conceptually related notes not yet in the graph (candidates for linking — note reduced precision if semantic search was unavailable)
 4. **Knowledge gaps**: Topics referenced but not covered by any note — candidates for new notes via pkm-create

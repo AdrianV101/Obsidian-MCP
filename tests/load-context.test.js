@@ -24,7 +24,7 @@ describe("loadProjectContext", () => {
 
     await fs.writeFile(
       path.join(projectDir, "development", "devlog.md"),
-      "---\ntype: devlog\ncreated: 2026-01-01\ntags: [devlog]\n---\n\n# Devlog\n\n## 2026-01-01\nOld entry.\n\n## 2026-02-01\nMiddle entry.\n\n## 2026-03-01\nRecent entry.\n\n## 2026-03-15\nLatest entry.\n"
+      "---\ntype: devlog\ncreated: 2026-01-01\ntags: [devlog]\n---\n\n# Development Log\n\n## Sessions\n\n### 2026-01-01 09:00\nOld entry.\n\n### 2026-02-01 10:00\nMiddle entry.\n\n### 2026-03-01 14:00\nRecent entry.\n\n### 2026-03-15 11:00\nLatest entry.\n"
     );
 
     await fs.writeFile(
@@ -77,6 +77,19 @@ describe("loadProjectContext", () => {
     await fs.rm(path.join(vaultPath, projectPath, "tasks"), { recursive: true });
     const ctx = await loadProjectContext(vaultPath, projectPath);
     assert.ok(ctx.includes("No active tasks"));
+  });
+
+  it("returns last 3 devlog sections for old h2-date format", async () => {
+    const projectDir = path.join(vaultPath, projectPath);
+    await fs.writeFile(
+      path.join(projectDir, "development", "devlog.md"),
+      "---\ntype: devlog\ncreated: 2026-01-01\ntags: [devlog]\n---\n\n# Devlog\n\n## 2026-01-01\nOld entry.\n\n## 2026-02-01\nMiddle entry.\n\n## 2026-03-01\nRecent entry.\n\n## 2026-03-15\nLatest entry.\n"
+    );
+    const ctx = await loadProjectContext(vaultPath, projectPath);
+    assert.ok(!ctx.includes("Old entry."));
+    assert.ok(ctx.includes("Middle entry."));
+    assert.ok(ctx.includes("Recent entry."));
+    assert.ok(ctx.includes("Latest entry."));
   });
 
   it("handles task file without frontmatter gracefully", async () => {
