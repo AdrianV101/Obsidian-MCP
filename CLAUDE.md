@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Claude Code plugin that provides an MCP server and supporting tools for bidirectional knowledge flow between Claude Code and an Obsidian vault. It packages 19 MCP tools, Claude Code hooks, and a setup skill under the `obsidian-pkm` plugin identity.
+This is a Claude Code plugin that provides an MCP server and supporting tools for bidirectional knowledge flow between Claude Code and an Obsidian vault. It packages 21 MCP tools, Claude Code hooks, and a setup skill under the `obsidian-pkm` plugin identity.
 
 ## Commands
 
@@ -32,7 +32,7 @@ npm run lint
 
 The project consists of three parts:
 
-**MCP Server**: A Node.js ES module server implementing the Model Context Protocol. The main entry point is `index.js` (tool definitions and request routing), with pure helper functions extracted to `helpers.js`. It provides 19 tools for vault interaction:
+**MCP Server**: A Node.js ES module server implementing the Model Context Protocol. The main entry point is `index.js` (tool definitions and request routing), with pure helper functions extracted to `helpers.js`. It provides 21 tools for vault interaction:
 - `vault_read` - Read note contents (supports pagination: `heading`, `tail`, `tail_sections` [with optional `section_level` param, default: 2], `chunk`, `lines`; auto-redirects to peek data for files >80k chars; `force` bypasses redirect)
 - `vault_peek` - Inspect file metadata/structure without reading full content (size, frontmatter, indented heading tree, preview)
 - `vault_write` - Create new notes from templates (enforces frontmatter; settable fields: `status`, `priority`, `project`, `deciders`, `due`, `source`; `variables` param for custom `<%...%>` substitution in template body)
@@ -51,6 +51,8 @@ The project consists of three parts:
 - `vault_trash` - Soft-delete to `.trash/` (Obsidian convention), warns about broken incoming links
 - `vault_move` - Move/rename files with automatic wikilink updating across vault (`update_links: false` to skip)
 - `vault_capture` - Signal a PKM-worthy capture (decision, task, research, bug); returns immediately, background hook creates the note
+- `vault_add_links` - Add annotated wikilinks to a note's section with deduplication (default: ## Related)
+- `vault_link_health` - Graph health report: orphans, broken links, weakly connected notes, ambiguous links
 
 The server uses `VAULT_PATH` environment variable (defaults to `~/Documents/PKM`) and includes path security to prevent directory escaping.
 
@@ -149,6 +151,52 @@ vault_update_frontmatter({
 
 Implementation: `updateFrontmatter` pure function in `helpers.js`, handler in `handlers.js`
 
+### vault_add_links (Atomic Link Insertion)
+
+Add annotated wikilinks to a note's section with deduplication. Validates targets exist, skips duplicates by basename (case-insensitive). Creates the section if missing.
+
+- Requires exact path (no fuzzy resolution — destructive operation)
+- Deduplicates by basename: `[[note]]` won't be added if `[[note]]` or `[[folder/note]]` already in file
+- Section insertion point: end of section (before next same-or-higher heading, or EOF)
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `path` | string | Exact vault-relative path (required) |
+| `links` | array | Links to add: `[{ target, annotation }]` (required) |
+| `section` | string | Target section heading (default: `## Related`) |
+| `create_section` | boolean | Create section if missing (default: true) |
+
+```javascript
+vault_add_links({
+  path: "research/caching.md",
+  links: [
+    { target: "decisions/ADR-003-caching.md", annotation: "supersedes this earlier approach" },
+    { target: "research/architecture-patterns.md", annotation: "foundational patterns referenced" }
+  ]
+})
+```
+
+### vault_link_health (Graph Health Report)
+
+Audit link quality across the vault or a specific folder. Returns categorized report of link issues.
+
+- **orphans**: Notes with zero incoming AND zero outgoing wikilinks
+- **broken**: Wikilinks that resolve to no existing file
+- **weak**: Notes with only 1 total resolved link (incoming + outgoing; broken links don't count)
+- **ambiguous**: Wikilinks where basename resolves to multiple files
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `folder` | string | Optional: scope to folder (fuzzy resolution supported) |
+| `checks` | array | Which checks: `orphans`, `broken`, `weak`, `ambiguous` (default: all) |
+| `limit` | number | Max results per category (default: 20) |
+
+```javascript
+vault_link_health({ folder: "01-Projects/MyApp", checks: ["orphans", "broken"] })
+```
+
+Implementation: `handleLinkHealth` in `handlers.js`, uses `buildIncomingIndex` from `graph.js` for O(M) performance.
+
 ### vault_query (Enhanced Filtering and Sorting)
 
 In addition to the standard filters (type, status, `tags` [ALL must match], `tags_any` [ANY must match], dates, folder), `vault_query` supports:
@@ -172,12 +220,12 @@ Read-only tools (`vault_read`, `vault_peek`, `vault_links`, `vault_neighborhood`
 - Ambiguous names (multiple files with same basename) return an error listing all candidates
 - Use a more specific path or the `folder` param to disambiguate
 
-Folder-scoped tools (`vault_search`, `vault_query`, `vault_tags`, `vault_recent`) support fuzzy folder resolution:
+Folder-scoped tools (`vault_search`, `vault_query`, `vault_tags`, `vault_recent`, `vault_link_health`) support fuzzy folder resolution:
 - Exact folder paths still work as before
 - Partial names match by substring: `"MyApp"` → `"01-Projects/MyApp"`
 - Ambiguous matches return an error listing candidates
 
-Write/destructive tools (`vault_write`, `vault_append`, `vault_edit`, `vault_trash`, `vault_move`) require exact paths to prevent accidental modifications.
+Write/destructive tools (`vault_write`, `vault_append`, `vault_edit`, `vault_trash`, `vault_move`, `vault_add_links`) require exact paths to prevent accidental modifications.
 
 Implementation: `helpers.js` (`buildBasenameMap`, `resolveFuzzyPath`, `resolveFuzzyFolder`)
 

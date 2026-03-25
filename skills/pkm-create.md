@@ -66,28 +66,31 @@ Use the note's content, shared tags, and conversation context to produce meaning
 
 ## Step 5: Insert Links
 
-Add annotated links to the note's `## Related` section:
+Add annotated links to the note using `vault_add_links`:
 
 ```
-vault_append({
+vault_add_links({
   path: "<path-to-new-note>",
-  heading: "## Related",
-  position: "end_of_section",
-  content: "- [[target-note]] — relationship explanation\n- [[other-note]] — relationship explanation"
+  links: [
+    { target: "<vault-relative-path>", annotation: "relationship explanation" },
+    { target: "<vault-relative-path>", annotation: "relationship explanation" }
+  ]
 })
 ```
 
-Format: `- [[note-name]] — relationship explanation`
+The tool handles deduplication (skips already-linked targets), creates `## Related` if missing, and validates targets exist. Format annotations as specific relationship language (see Step 4).
 
-If the template does not include a `## Related` section, first append the heading: `vault_append({ path, content: "\n## Related\n" })`, then insert the links. Templates with `## Related` built in: adr, permanent-note, research-note, troubleshooting-log, literature-note, moc, meeting-notes.
+If the note uses a non-standard section (e.g., `## References`), pass `section: "## References"`.
 
-Note: MOC notes created before this version may use `## Related Topics` instead of `## Related`. If `vault_append` fails with "Heading not found", check for the old heading name.
+If the template does not include a `## Related` section, `vault_add_links` will create it automatically (default `create_section: true`). Templates with `## Related` built in: adr, permanent-note, research-note, troubleshooting-log, literature-note, moc, meeting-notes.
+
+Note: MOC notes created before this version may use `## Related Topics` instead of `## Related`. If `vault_add_links` fails with "Section not found", try `section: "## Related Topics"`.
 
 ## Step 6: Bidirectional Linking
 
 For **significant note types** (ADR, permanent-note, research-note, troubleshooting-log, literature-note, moc, meeting-notes):
 - Check if the top 1–2 target notes would benefit from a backlink to this new note
-- If yes, append to their `## Related` section too using `vault_append`
+- If yes, add a backlink to their `## Related` section using `vault_add_links`
 
 **Skip** for ephemeral types (fleeting-note, daily-note) — Obsidian's native backlinks panel is sufficient.
 

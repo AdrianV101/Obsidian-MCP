@@ -25,7 +25,7 @@ export function extractWikilinks(content) {
  * 2. Fall back to basename match (e.g., "note" -> any "note.md" in vault)
  *
  * @param {string} linkTarget - raw wikilink target text
- * @param {Map<string, string[]>} resolutionMap - from buildLinkResolutionMap
+ * @param {Map<string, string[]>} resolutionMap - from buildBasenameMap
  * @param {Set<string>} allFilesSet - vault-relative file paths as a Set (for O(1) exact path matching)
  * @returns {{ paths: string[], ambiguous: boolean }}
  */
@@ -126,11 +126,11 @@ export function rewriteWikilinks(content, oldTarget, newTarget) {
  *
  * @param {string} vaultPath - absolute vault path
  * @param {string[]} allFiles - vault-relative file paths
- * @param {Map<string, string[]>} resolutionMap - from buildLinkResolutionMap
+ * @param {Map<string, string[]>} resolutionMap - from buildBasenameMap
  * @param {Set<string>} allFilesSet - vault-relative file paths as a Set
  * @returns {Promise<Map<string, Set<string>>>} targetPath -> Set<sourcePath>
  */
-async function buildIncomingIndex(vaultPath, allFiles, resolutionMap, allFilesSet) {
+export async function buildIncomingIndex(vaultPath, allFiles, resolutionMap, allFilesSet) {
   const index = new Map(); // targetPath -> Set<sourcePath>
 
   for (const file of allFiles) {

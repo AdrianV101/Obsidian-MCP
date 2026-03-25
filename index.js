@@ -378,6 +378,75 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
           },
           required: ["type", "title", "content"]
         }
+      },
+      {
+        name: "vault_add_links",
+        description: "Add annotated wikilinks to a note's section (default: ## Related). " +
+          "Deduplicates by basename (skips links already present). " +
+          "Creates the section if missing. Requires exact path.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "Exact path to the note (vault-relative, e.g., '01-Projects/MyApp/research/caching.md')"
+            },
+            links: {
+              type: "array",
+              description: "Links to add",
+              items: {
+                type: "object",
+                properties: {
+                  target: {
+                    type: "string",
+                    description: "Vault-relative path to link target (e.g., 'notes/architecture-patterns.md')"
+                  },
+                  annotation: {
+                    type: "string",
+                    description: "One-line explanation of the relationship (e.g., 'foundational patterns this decision builds on')"
+                  }
+                },
+                required: ["target"]
+              }
+            },
+            section: {
+              type: "string",
+              description: "Target section heading (default: '## Related')"
+            },
+            create_section: {
+              type: "boolean",
+              description: "Create section if missing (default: true)"
+            }
+          },
+          required: ["path", "links"]
+        }
+      },
+      {
+        name: "vault_link_health",
+        description: "Graph health report — finds orphan notes, broken wikilinks, weakly connected notes, " +
+          "and ambiguous links. Scans all markdown files (or a specific folder). " +
+          "Use to audit link quality and find notes that need better connections.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            folder: {
+              type: "string",
+              description: "Optional: scope to this folder (supports fuzzy folder resolution, e.g., 'MyApp')"
+            },
+            checks: {
+              type: "array",
+              items: {
+                type: "string",
+                enum: ["orphans", "broken", "weak", "ambiguous"]
+              },
+              description: "Which checks to run (default: all four). orphans = no links in/out, broken = links to missing files, weak = only 1 total link, ambiguous = basename resolves to multiple files"
+            },
+            limit: {
+              type: "number",
+              description: "Max results per category (default: 20)"
+            }
+          }
+        }
       }
     ];
 

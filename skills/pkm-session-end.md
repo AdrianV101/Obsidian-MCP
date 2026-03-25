@@ -69,15 +69,17 @@ Skip if the session was purely mechanical (config changes, minor fixes) with not
 
 ## Step 4: Link Audit
 
-For each note **created or significantly modified** this session:
+Run a link health check on the project folder to find disconnected notes:
 
-1. Read the note (`vault_read` or `vault_peek`)
-2. Check if it has a `## Related` section with actual links (not just the placeholder `- `)
-3. Flag notes with **zero links** — these are knowledge islands, findable by search but invisible in the graph
+```
+vault_link_health({ folder: "<project-folder>", checks: ["orphans", "weak"] })
+```
+
+Flag notes with **zero links** (orphans) or **only 1 link** (weak) — these are knowledge islands that need connections.
 
 ## Step 5: Patch Gaps
 
-For each under-connected note found in step 4:
+For each under-connected note found in Step 4:
 
 ```
 vault_suggest_links({ path: "<under-connected-note>", limit: 5 })
@@ -85,14 +87,14 @@ vault_suggest_links({ path: "<under-connected-note>", limit: 5 })
 
 If `vault_suggest_links` is unavailable (no `OPENAI_API_KEY`), use `vault_search` with the note's title and key terms, and `vault_query` with matching tags to find link candidates manually.
 
-Draft annotations and insert the top 3–5 links using:
+Then insert links using `vault_add_links`:
 
 ```
-vault_append({
+vault_add_links({
   path: "<under-connected-note>",
-  heading: "## Related",
-  position: "end_of_section",
-  content: "- [[target]] — annotation"
+  links: [
+    { target: "<path>", annotation: "relationship" }
+  ]
 })
 ```
 

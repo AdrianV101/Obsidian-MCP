@@ -23,7 +23,7 @@ import {
   FORCE_HARD_CAP,
   CHUNK_SIZE,
 } from "./helpers.js";
-import { exploreNeighborhood, formatNeighborhood, findFilesLinkingTo, rewriteWikilinks, extractWikilinks } from "./graph.js";
+import { exploreNeighborhood, formatNeighborhood, findFilesLinkingTo, rewriteWikilinks, extractWikilinks, resolveLink, buildIncomingIndex } from "./graph.js";
 import { getAllMarkdownFiles, extractFrontmatter } from "./utils.js";
 
 /**
@@ -846,6 +846,207 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     };
   }
 
+  async function handleAddLinks(args) {
+    const { path: filePath, links, section = "## Related", create_section = true } = args;
+
+    if (!links || links.length === 0) {
+      throw new Error("At least one link is required");
+    }
+
+    // Exact path only — destructive operation
+    const absPath = resolvePath(filePath);
+    let content;
+    try {
+      content = await fs.readFile(absPath, "utf-8");
+    } catch (e) {
+      if (e.code === "ENOENT") {
+        throw new Error(`File not found: ${filePath}. Use vault_write to create new files.`, { cause: e });
+      }
+      throw e;
+    }
+
+    // Extract existing wikilinks for deduplication (case-insensitive basename)
+    const existingLinks = extractWikilinks(content).map(
+      l => path.basename(l.split("#")[0].split("^")[0].trim(), ".md").toLowerCase()
+    );
+
+    const added = [];
+    const skipped = [];
+
+    for (const { target, annotation = "" } of links) {
+      const targetWithExt = target.endsWith(".md") ? target : target + ".md";
+      const targetBasename = path.basename(target, ".md").toLowerCase();
+
+      if (!allFilesSet.has(targetWithExt)) {
+        skipped.push({ target, reason: "not found" });
+        continue;
+      }
+
+      if (existingLinks.includes(targetBasename)) {
+        skipped.push({ target, reason: "already linked" });
+        continue;
+      }
+
+      // Use full path for disambiguation when basename is not unique
+      const basenameKey = targetBasename;
+      const candidates = basenameMap.get(basenameKey) || [];
+      const displayName = candidates.length > 1
+        ? targetWithExt.replace(/\.md$/, "")
+        : path.basename(target, ".md");
+      const entry = annotation
+        ? `- [[${displayName}]] — ${annotation}`
+        : `- [[${displayName}]]`;
+      added.push(entry);
+      existingLinks.push(targetBasename);
+    }
+
+    if (added.length === 0 && skipped.length > 0) {
+      const skipSummary = skipped.map(s => `${path.basename(s.target, ".md")} (${s.reason})`).join(", ");
+      return {
+        content: [{ type: "text", text: `No links added to ${filePath}.\nSkipped ${skipped.length}: ${skipSummary}` }]
+      };
+    }
+
+    let range = findSectionRange(content, section);
+    if (!range) {
+      if (!create_section) {
+        throw new Error(`Section "${section}" not found in ${filePath}. Set create_section: true to create it.`);
+      }
+      const sectionBlock = (content.endsWith("\n") ? "\n" : "\n\n") + section + "\n";
+      content = content + sectionBlock;
+      range = findSectionRange(content, section);
+      if (!range) {
+        throw new Error(`Failed to create section "${section}" in ${filePath}. Ensure the section parameter is a valid markdown heading (e.g., "## Related").`);
+      }
+    }
+
+    const insertText = added.join("\n") + "\n";
+    content = content.slice(0, range.sectionEnd) + insertText + content.slice(range.sectionEnd);
+    await fs.writeFile(absPath, content, "utf-8");
+
+    let summary = `Added ${added.length} link${added.length === 1 ? "" : "s"} to ${filePath} (${section}):\n${added.join("\n")}`;
+    if (skipped.length > 0) {
+      const skipSummary = skipped.map(s => `${path.basename(s.target, ".md")} (${s.reason})`).join(", ");
+      summary += `\nSkipped ${skipped.length}: ${skipSummary}`;
+    }
+    return { content: [{ type: "text", text: summary }] };
+  }
+
+  async function handleLinkHealth(args) {
+    const { checks = ["orphans", "broken", "weak", "ambiguous"], limit = 20 } = args;
+    const allFilesList = Array.from(allFilesSet);
+
+    // Scope to folder if specified
+    let scopedFiles;
+    if (args.folder) {
+      const resolvedFolder = resolveFolder(args.folder);
+      const relFolder = path.relative(vaultPath, resolvedFolder);
+      scopedFiles = allFilesList.filter(f => f.startsWith(relFolder + "/") || f.startsWith(relFolder + path.sep));
+    } else {
+      scopedFiles = allFilesList;
+    }
+
+    const sections = [];
+    const totalScanned = scopedFiles.length;
+
+    // Pre-compute: outgoing links per file (single pass)
+    const fileData = new Map();
+    for (const file of scopedFiles) {
+      let content;
+      try {
+        content = await fs.readFile(path.join(vaultPath, file), "utf-8");
+      } catch (e) {
+        if (e.code === "ENOENT") continue;
+        throw e;
+      }
+      const outgoing = extractWikilinks(content);
+      const resolved = outgoing.map(link => ({
+        raw: link,
+        ...resolveLink(link, basenameMap, allFilesSet)
+      }));
+      const fm = extractFrontmatter(content);
+      fileData.set(file, { resolved, frontmatter: fm });
+    }
+
+    // Build incoming index once — O(M) instead of per-file findFilesLinkingTo O(N*M)
+    const needsIncoming = checks.includes("orphans") || checks.includes("weak");
+    const incomingIndex = needsIncoming
+      ? await buildIncomingIndex(vaultPath, allFilesList, basenameMap, allFilesSet)
+      : null;
+
+    if (checks.includes("orphans")) {
+      const orphans = [];
+      for (const file of scopedFiles) {
+        const data = fileData.get(file);
+        if (!data) continue;
+        const hasOutgoing = data.resolved.some(r => r.paths.length > 0);
+        const incomingCount = incomingIndex.get(file)?.size || 0;
+        if (!hasOutgoing && incomingCount === 0) {
+          const fm = data.frontmatter;
+          orphans.push(`- ${file} (type: ${fm?.type || "unknown"}, created: ${fm?.created || "unknown"})`);
+        }
+        if (orphans.length >= limit) break;
+      }
+      sections.push(`**Orphan notes** (${orphans.length}):\n${orphans.length > 0 ? orphans.join("\n") : "None found"}`);
+    }
+
+    if (checks.includes("broken")) {
+      const broken = [];
+      for (const file of scopedFiles) {
+        const data = fileData.get(file);
+        if (!data) continue;
+        for (const r of data.resolved) {
+          if (r.paths.length === 0) {
+            broken.push(`- ${file} → [[${r.raw}]] (no matching file)`);
+            if (broken.length >= limit) break;
+          }
+        }
+        if (broken.length >= limit) break;
+      }
+      sections.push(`**Broken links** (${broken.length}):\n${broken.length > 0 ? broken.join("\n") : "None found"}`);
+    }
+
+    if (checks.includes("weak")) {
+      const weak = [];
+      for (const file of scopedFiles) {
+        const data = fileData.get(file);
+        if (!data) continue;
+        const validOutgoing = data.resolved.filter(r => r.paths.length > 0).length;
+        const incomingCount = incomingIndex.get(file)?.size || 0;
+        const total = validOutgoing + incomingCount;
+        if (total === 1) {
+          weak.push(`- ${file} (${validOutgoing} outgoing, ${incomingCount} incoming)`);
+        }
+        if (weak.length >= limit) break;
+      }
+      sections.push(`**Weakly connected** (${weak.length}):\n${weak.length > 0 ? weak.join("\n") : "None found"}`);
+    }
+
+    if (checks.includes("ambiguous")) {
+      const ambiguous = [];
+      const seen = new Set();
+      for (const file of scopedFiles) {
+        const data = fileData.get(file);
+        if (!data) continue;
+        for (const r of data.resolved) {
+          if (r.ambiguous && !seen.has(r.raw)) {
+            seen.add(r.raw);
+            ambiguous.push(`- ${file} → [[${r.raw}]] resolves to ${r.paths.length} files`);
+            if (ambiguous.length >= limit) break;
+          }
+        }
+        if (ambiguous.length >= limit) break;
+      }
+      sections.push(`**Ambiguous links** (${ambiguous.length}):\n${ambiguous.length > 0 ? ambiguous.join("\n") : "None found"}`);
+    }
+
+    const header = args.folder
+      ? `Link health report for ${args.folder}/ (${totalScanned} notes scanned)`
+      : `Link health report (${totalScanned} notes scanned)`;
+
+    return { content: [{ type: "text", text: `${header}\n\n${sections.join("\n\n")}` }] };
+  }
+
   async function handleCapture(args) {
     const { type, title, content } = args;
     if (!type || !title || !content) {
@@ -881,5 +1082,7 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     ["vault_move", handleMove],
     ["vault_update_frontmatter", handleUpdateFrontmatter],
     ["vault_capture", handleCapture],
+    ["vault_add_links", handleAddLinks],
+    ["vault_link_health", handleLinkHealth],
   ]);
 }
