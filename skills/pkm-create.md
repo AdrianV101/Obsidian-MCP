@@ -77,11 +77,11 @@ vault_append({
 
 Format: `- [[note-name]] — relationship explanation`
 
-If the note's template does not include a `## Related` section (task, note, fleeting-note, daily-note, devlog, project-index), first append the heading: `vault_append({ path, content: "\n## Related\n" })`, then insert the links.
+If the template does not include a `## Related` section, first append the heading: `vault_append({ path, content: "\n## Related\n" })`, then insert the links. Templates with `## Related` built in: adr, permanent-note, research-note, troubleshooting-log, literature-note, moc, meeting-notes.
 
 ## Step 6: Bidirectional Linking
 
-For **significant note types** (ADR, permanent-note, research-note, troubleshooting-log, literature-note, moc):
+For **significant note types** (ADR, permanent-note, research-note, troubleshooting-log, literature-note, moc, meeting-notes):
 - Check if the top 1–2 target notes would benefit from a backlink to this new note
 - If yes, append to their `## Related` section too using `vault_append`
 

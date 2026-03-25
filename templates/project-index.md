@@ -32,7 +32,3 @@ tags:
 ## Current Status
 <!-- What's the current state? What's being worked on? -->
 
-
-## Recent Activity
-<!-- Auto-updated by Claude Code during sessions -->
-

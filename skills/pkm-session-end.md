@@ -41,10 +41,16 @@ Use the **actual date** and fill in real content from the session. Keep entries 
 Query the activity log to find all notes created or modified this session:
 
 ```
-vault_activity({ session: "<current-session-id>", limit: 50 })
+vault_activity({ limit: 1 })
 ```
 
-The session ID appears in any prior `vault_activity` response. Note which files were created, modified, and searched.
+The response header shows `current session: <id>`. Use that ID for a filtered query:
+
+```
+vault_activity({ session: "<id-from-above>", limit: 50 })
+```
+
+Note which files were created, modified, and searched.
 
 ## Step 3: Capture Undocumented Work
 

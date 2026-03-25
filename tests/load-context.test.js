@@ -92,6 +92,28 @@ describe("loadProjectContext", () => {
     assert.ok(ctx.includes("Latest entry."));
   });
 
+  it("handles devlog with ## Sessions but no entries", async () => {
+    const projectDir = path.join(vaultPath, projectPath);
+    await fs.writeFile(
+      path.join(projectDir, "development", "devlog.md"),
+      "---\ntype: devlog\ncreated: 2026-01-01\ntags: [devlog]\n---\n\n# Development Log\n\n## Sessions\n"
+    );
+    const ctx = await loadProjectContext(vaultPath, projectPath);
+    assert.ok(ctx.includes("Sessions"));
+  });
+
+  it("extracts only h3 entries from hybrid devlog with ## Sessions", async () => {
+    const projectDir = path.join(vaultPath, projectPath);
+    await fs.writeFile(
+      path.join(projectDir, "development", "devlog.md"),
+      "---\ntype: devlog\ncreated: 2026-01-01\ntags: [devlog]\n---\n\n# Development Log\n\n## 2026-01-01\nLegacy entry.\n\n## Sessions\n\n### 2026-03-01 14:00\nNew entry one.\n\n### 2026-03-15 11:00\nNew entry two.\n"
+    );
+    const ctx = await loadProjectContext(vaultPath, projectPath);
+    assert.ok(!ctx.includes("Legacy entry."));
+    assert.ok(ctx.includes("New entry one."));
+    assert.ok(ctx.includes("New entry two."));
+  });
+
   it("handles task file without frontmatter gracefully", async () => {
     const projectDir = path.join(vaultPath, projectPath);
     await fs.writeFile(

@@ -32,7 +32,7 @@ Explore the structural neighborhood around the seed note:
 vault_neighborhood({ path: "<seed-note-path>", depth: 2, direction: "both" })
 ```
 
-This reveals the **intentional** knowledge structure — what someone explicitly linked. If the seed note has no links (new or isolated note), this is expected — rely on Step 3 results for connection discovery.
+This reveals the **intentional** knowledge structure — what someone explicitly linked. If the seed note has no links (new or isolated note), this is expected — rely on Step 3 results for connection discovery. If `vault_neighborhood` returns an error (e.g., 'File not found'), the seed note may have been deleted or the path misresolved — try the next-best result from Step 1, or verify with `vault_search`.
 
 ## Step 3: Semantic Expansion
 
