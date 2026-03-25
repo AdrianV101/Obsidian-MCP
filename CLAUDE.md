@@ -41,7 +41,7 @@ The project consists of three parts:
 - `vault_update_frontmatter` - Update YAML frontmatter fields atomically (set, create, remove fields)
 - `vault_search` - Full-text search across markdown files
 - `vault_semantic_search` - Semantic similarity search using OpenAI embeddings (requires `OPENAI_API_KEY`)
-- `vault_suggest_links` - Suggest relevant notes to link to based on content similarity (requires `OPENAI_API_KEY`)
+- `vault_suggest_links` - Suggest relevant notes to link based on content similarity; `graph_context: true` for graph-semantic blending (requires `OPENAI_API_KEY`)
 - `vault_list` / `vault_recent` - Directory listing and recent files
 - `vault_links` - Wikilink analysis (`[[...]]` syntax)
 - `vault_neighborhood` - Graph context exploration via BFS wikilink traversal
@@ -63,7 +63,7 @@ Explores the graph neighborhood around a note by traversing wikilinks using BFS.
 - Resolves wikilink targets to actual file paths (handles `[[note]]`, `[[folder/note]]`, `[[note|alias]]`, `[[note#heading]]`)
 - Detects ambiguous links (multiple files with same basename) and annotates them
 - Per-call indexes: basename resolution map + incoming link index (no persistent state)
-- Params: `path` (required), `depth` (default: 2), `direction` (`"both"` | `"outgoing"` | `"incoming"`)
+- Params: `path` (required), `depth` (default: 2), `direction` (`"both"` | `"outgoing"` | `"incoming"`), `include_semantic` (boolean, appends unlinked semantic results), `semantic_limit` (default: 5)
 - Implementation: `graph.js` module (link resolution, BFS traversal, formatting)
 
 ### vault_semantic_search (Semantic Similarity Search)
@@ -75,7 +75,12 @@ Finds conceptually related notes even when they use different terminology. For e
 - Index stored at `$VAULT_PATH/.obsidian/semantic-index.db` (SQLite + sqlite-vec)
 - Background `fs.watch` keeps index fresh; startup sync catches changes made while server was stopped
 - Chunking: whole-note for short notes, heading-based (`##`) splits for notes > ~2000 tokens
-- Params: `query` (required), `limit`, `folder`, `threshold` (0-1 similarity score)
+- Params: `query` (required), `limit`, `folder`, `threshold` (0-1 similarity score), `anchor` (optional path for graph-distance weighting), `graph_weight` (0-1, default: 0.3)
+
+```javascript
+// Graph-weighted search biased toward a specific note's neighborhood
+vault_semantic_search({ query: "cache eviction strategies", anchor: "research/caching.md", graph_weight: 0.3 })
+```
 
 The semantic index is a regenerable cache — deleting `semantic-index.db` triggers a full re-embed on next startup. The DB syncs across machines via Obsidian Sync (stored in `.obsidian/`).
 
