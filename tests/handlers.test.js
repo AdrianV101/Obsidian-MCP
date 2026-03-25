@@ -77,6 +77,22 @@ async function buildTemplateRegistry(tmpDir) {
   return templateRegistry;
 }
 
+// eslint-disable-next-line no-unused-vars
+function createMockSemanticIndex(results = []) {
+  return {
+    isAvailable: true,
+    searchRaw: async ({ _query, limit, _folder, _threshold, excludeFiles }) => {
+      return results.filter(r => !excludeFiles?.has(r.path)).slice(0, limit || 5);
+    },
+    search: async ({ _query, limit, _folder, _threshold }) => {
+      const filtered = results.slice(0, limit || 5);
+      if (filtered.length === 0) return "No semantically related notes found.";
+      const formatted = filtered.map(r => `**${r.path}** (score: ${r.score})\n${r.preview}`).join("\n\n");
+      return `Found ${filtered.length} semantically related note${filtered.length === 1 ? "" : "s"}:\n\n${formatted}`;
+    }
+  };
+}
+
 before(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "handlers-test-"));
 
