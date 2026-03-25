@@ -22,6 +22,8 @@ vault_semantic_search({ query: "<topic>", limit: 5 })
 - Otherwise, pick the highest-scoring result as the seed
 - If **no relevant notes** exist (all scores < 0.3), report that the vault has minimal coverage and suggest creating a seed note using pkm-create
 
+If `vault_semantic_search` is unavailable (no `OPENAI_API_KEY`), use `vault_search` with key terms and `vault_query` by tags/type to locate a seed note.
+
 ## Step 2: Graph Context
 
 Explore the structural neighborhood around the seed note:

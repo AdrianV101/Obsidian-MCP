@@ -19,6 +19,8 @@ vault_semantic_search({ query: "<topic/title of intended note>", limit: 5 })
 - If results are **0.5–0.8**: mention them as potentially related but proceed with creation
 - If **no close matches**: proceed
 
+If `vault_semantic_search` is unavailable (no `OPENAI_API_KEY`), use `vault_search` with the note's title and key terms, and `vault_query` with matching tags to check for duplicates.
+
 ## Step 2: Create the Note
 
 Use `vault_write` with the appropriate template and frontmatter:
@@ -46,7 +48,7 @@ vault_suggest_links({ path: "<path-to-new-note>", limit: 8 })
 
 Select the top **3–5** most relevant suggestions.
 
-If `vault_suggest_links` is unavailable (no `OPENAI_API_KEY`), use `vault_semantic_search` with the note's title/topic and manually identify good link targets from the results.
+If `vault_suggest_links` is unavailable (no `OPENAI_API_KEY`), use `vault_search` with key terms from the note's title/topic and `vault_query` with matching tags to manually identify good link targets.
 
 ## Step 4: Draft Annotations
 
@@ -75,9 +77,11 @@ vault_append({
 
 Format: `- [[note-name]] — relationship explanation`
 
+If the note's template does not include a `## Related` section (task, note, fleeting-note, daily-note), first append the heading: `vault_append({ path, content: "\n## Related\n" })`, then insert the links.
+
 ## Step 6: Bidirectional Linking
 
-For **significant note types** (ADR, permanent-note, research-note, literature-note, moc):
+For **significant note types** (ADR, permanent-note, research-note, troubleshooting-log, literature-note, moc):
 - Check if the top 1–2 target notes would benefit from a backlink to this new note
 - If yes, append to their `## Related` section too using `vault_append`
 

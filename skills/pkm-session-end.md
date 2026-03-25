@@ -22,6 +22,8 @@ vault_append({
 
 Use the **actual date** and fill in real content from the session. Keep entries concise but specific.
 
+**Note**: The `## Recent Activity` heading must exist in the devlog file. If it doesn't (fresh devlog from template), first append it: `vault_append({ path: "...", content: "\n## Recent Activity\n" })`.
+
 ## Step 2: Review Session Work
 
 Query the activity log to find all notes created or modified this session:
@@ -62,6 +64,8 @@ For each under-connected note found in step 4:
 ```
 vault_suggest_links({ path: "<under-connected-note>", limit: 5 })
 ```
+
+If `vault_suggest_links` is unavailable (no `OPENAI_API_KEY`), use `vault_search` with the note's title and key terms to find link candidates manually.
 
 Draft annotations and insert the top 3–5 links using:
 
