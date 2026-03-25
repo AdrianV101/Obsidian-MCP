@@ -846,6 +846,84 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     };
   }
 
+  async function handleAddLinks(args) {
+    const { path: filePath, links, section = "## Related", create_section = true } = args;
+
+    if (!links || links.length === 0) {
+      throw new Error("At least one link is required");
+    }
+
+    // Exact path only — destructive operation
+    const absPath = resolvePath(filePath);
+    let content;
+    try {
+      content = await fs.readFile(absPath, "utf-8");
+    } catch (e) {
+      if (e.code === "ENOENT") {
+        throw new Error(`File not found: ${filePath}. Use vault_write to create new files.`, { cause: e });
+      }
+      throw e;
+    }
+
+    // Extract existing wikilinks for deduplication (case-insensitive basename)
+    const existingLinks = extractWikilinks(content).map(
+      l => path.basename(l.split("#")[0].split("^")[0].trim(), ".md").toLowerCase()
+    );
+
+    const added = [];
+    const skipped = [];
+
+    for (const { target, annotation = "" } of links) {
+      const targetWithExt = target.endsWith(".md") ? target : target + ".md";
+      const targetBasename = path.basename(target, ".md").toLowerCase();
+
+      if (!allFilesSet.has(targetWithExt)) {
+        skipped.push({ target, reason: "not found" });
+        continue;
+      }
+
+      if (existingLinks.includes(targetBasename)) {
+        skipped.push({ target, reason: "already linked" });
+        continue;
+      }
+
+      const displayName = path.basename(target, ".md");
+      const entry = annotation
+        ? `- [[${displayName}]] — ${annotation}`
+        : `- [[${displayName}]]`;
+      added.push(entry);
+      existingLinks.push(targetBasename);
+    }
+
+    if (added.length === 0 && skipped.length > 0) {
+      const skipSummary = skipped.map(s => `${path.basename(s.target, ".md")} (${s.reason})`).join(", ");
+      return {
+        content: [{ type: "text", text: `No links added to ${filePath}.\nSkipped ${skipped.length}: ${skipSummary}` }]
+      };
+    }
+
+    let range = findSectionRange(content, section);
+    if (!range) {
+      if (!create_section) {
+        throw new Error(`Section "${section}" not found in ${filePath}. Set create_section: true to create it.`);
+      }
+      const sectionBlock = (content.endsWith("\n") ? "\n" : "\n\n") + section + "\n";
+      content = content + sectionBlock;
+      range = findSectionRange(content, section);
+    }
+
+    const insertText = added.join("\n") + "\n";
+    content = content.slice(0, range.sectionEnd) + insertText + content.slice(range.sectionEnd);
+    await fs.writeFile(absPath, content, "utf-8");
+
+    let summary = `Added ${added.length} link${added.length === 1 ? "" : "s"} to ${filePath} (${section}):\n${added.join("\n")}`;
+    if (skipped.length > 0) {
+      const skipSummary = skipped.map(s => `${path.basename(s.target, ".md")} (${s.reason})`).join(", ");
+      summary += `\nSkipped ${skipped.length}: ${skipSummary}`;
+    }
+    return { content: [{ type: "text", text: summary }] };
+  }
+
   async function handleCapture(args) {
     const { type, title, content } = args;
     if (!type || !title || !content) {
@@ -881,5 +959,6 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     ["vault_move", handleMove],
     ["vault_update_frontmatter", handleUpdateFrontmatter],
     ["vault_capture", handleCapture],
+    ["vault_add_links", handleAddLinks],
   ]);
 }

@@ -292,6 +292,23 @@ tags:
 # Task C - no due date
 `);
 
+  // ── Fixture for vault_add_links testing ──
+  await fs.writeFile(path.join(notesDir, "with-related.md"), `---
+type: research
+status: active
+created: 2026-01-01
+tags:
+  - test
+---
+# Note With Related
+
+Some content about testing.
+
+## Related
+<!-- Format: - [[note-name]] — relationship explanation -->
+- [[alpha]] — existing link
+`);
+
   // Build template registry (mimicking what index.js does)
   const templateRegistry = await buildTemplateRegistry(tmpDir);
 
@@ -1714,7 +1731,7 @@ describe("createHandlers", () => {
       "vault_neighborhood", "vault_query", "vault_tags",
       "vault_activity", "vault_semantic_search", "vault_suggest_links",
       "vault_peek", "vault_trash", "vault_move",
-      "vault_update_frontmatter",
+      "vault_update_frontmatter", "vault_add_links",
     ];
     for (const tool of expectedTools) {
       assert.ok(handlers.has(tool), `Missing handler: ${tool}`);
@@ -1722,8 +1739,8 @@ describe("createHandlers", () => {
     }
   });
 
-  it("returns exactly 19 handlers", () => {
-    assert.equal(handlers.size, 19);
+  it("returns exactly 20 handlers", () => {
+    assert.equal(handlers.size, 20);
   });
 });
 
@@ -2111,5 +2128,186 @@ describe("handleWrite atomic creation (wx flag)", () => {
       }),
       /already exists/i
     );
+  });
+});
+
+// ─── vault_add_links ──────────────────────────────────────────────────
+
+describe("vault_add_links", () => {
+  async function freshHandlersForAddLinks(tmpDir) {
+    const templateRegistry = await buildTemplateRegistry(tmpDir);
+    return createHandlers({
+      vaultPath: tmpDir,
+      templateRegistry,
+      semanticIndex: null,
+      activityLog: null,
+      sessionId: "test-add-links-" + Math.random().toString(36).slice(2, 8),
+    });
+  }
+
+  it("adds annotated links to existing ## Related section", async () => {
+    const handler = handlers.get("vault_add_links");
+    const result = await handler({
+      path: "notes/with-related.md",
+      links: [
+        { target: "notes/beta.md", annotation: "architecture context" },
+        { target: "notes/gamma.md", annotation: "permanent knowledge" },
+      ],
+    });
+    const text = result.content[0].text;
+    assert.ok(text.includes("Added 2"));
+
+    const content = await fs.readFile(path.join(tmpDir, "notes", "with-related.md"), "utf-8");
+    assert.ok(content.includes("[[alpha]]"), "existing link preserved");
+    assert.ok(content.includes("[[beta]] — architecture context"), "beta added");
+    assert.ok(content.includes("[[gamma]] — permanent knowledge"), "gamma added");
+  });
+
+  it("skips links that already exist (deduplication)", async () => {
+    const handler = handlers.get("vault_add_links");
+    const result = await handler({
+      path: "notes/with-related.md",
+      links: [
+        { target: "notes/alpha.md", annotation: "duplicate attempt" },
+      ],
+    });
+    const text = result.content[0].text;
+    assert.ok(text.includes("Skipped 1"), "should report skip");
+    assert.ok(text.includes("already linked"), "should state reason");
+  });
+
+  it("skips links to non-existent targets", async () => {
+    const handler = handlers.get("vault_add_links");
+    const result = await handler({
+      path: "notes/with-related.md",
+      links: [
+        { target: "notes/nonexistent.md", annotation: "should fail" },
+      ],
+    });
+    const text = result.content[0].text;
+    assert.ok(text.includes("Skipped 1"), "should report skip");
+    assert.ok(text.includes("not found"), "should state reason");
+  });
+
+  it("creates ## Related section when missing and create_section is true", async () => {
+    const handler = handlers.get("vault_add_links");
+    const result = await handler({
+      path: "notes/gamma.md",
+      links: [
+        { target: "notes/alpha.md", annotation: "related research" },
+      ],
+    });
+    const text = result.content[0].text;
+    assert.ok(text.includes("Added 1"));
+
+    const content = await fs.readFile(path.join(tmpDir, "notes", "gamma.md"), "utf-8");
+    assert.ok(content.includes("## Related"), "section created");
+    assert.ok(content.includes("[[alpha]] — related research"), "link added");
+  });
+
+  it("errors when section missing and create_section is false", async () => {
+    const noRelDir = path.join(tmpDir, "add-links-test");
+    await fs.mkdir(noRelDir, { recursive: true });
+    await fs.writeFile(path.join(noRelDir, "no-related.md"), "---\ntype: fleeting\ncreated: 2026-01-01\ntags: [test]\n---\n# No Related Section\n\nJust content.\n");
+
+    const freshHandlers = await freshHandlersForAddLinks(tmpDir);
+    await assert.rejects(
+      () => freshHandlers.get("vault_add_links")({
+        path: "add-links-test/no-related.md",
+        links: [{ target: "notes/alpha.md", annotation: "test" }],
+        create_section: false,
+      }),
+      /not found/i
+    );
+  });
+
+  it("uses custom section heading", async () => {
+    const customDir = path.join(tmpDir, "add-links-custom");
+    await fs.mkdir(customDir, { recursive: true });
+    await fs.writeFile(path.join(customDir, "custom-section.md"), `---
+type: research
+created: 2026-01-01
+tags:
+  - test
+---
+# Custom Section Note
+
+Some content.
+
+## References
+
+## Notes
+
+More notes here.
+`);
+
+    const freshHandlers = await freshHandlersForAddLinks(tmpDir);
+    const result = await freshHandlers.get("vault_add_links")({
+      path: "add-links-custom/custom-section.md",
+      links: [{ target: "notes/alpha.md", annotation: "see also" }],
+      section: "## References",
+    });
+    const text = result.content[0].text;
+    assert.ok(text.includes("Added 1"));
+
+    const content = await fs.readFile(path.join(customDir, "custom-section.md"), "utf-8");
+    // Link should be between ## References and ## Notes
+    const refIdx = content.indexOf("## References");
+    const notesIdx = content.indexOf("## Notes");
+    const linkIdx = content.indexOf("[[alpha]] — see also");
+    assert.ok(linkIdx > refIdx, "link after References heading");
+    assert.ok(linkIdx < notesIdx, "link before Notes heading");
+  });
+
+  it("rejects non-existent file path", async () => {
+    const handler = handlers.get("vault_add_links");
+    await assert.rejects(
+      () => handler({
+        path: "notes/nonexistent-file.md",
+        links: [{ target: "notes/alpha.md", annotation: "test" }],
+      }),
+      /not found|ENOENT/i
+    );
+  });
+
+  it("requires at least one link", async () => {
+    const handler = handlers.get("vault_add_links");
+    await assert.rejects(
+      () => handler({
+        path: "notes/with-related.md",
+        links: [],
+      }),
+      /at least one link/i
+    );
+  });
+
+  it("handles mixed valid and invalid links", async () => {
+    const mixedDir = path.join(tmpDir, "add-links-mixed");
+    await fs.mkdir(mixedDir, { recursive: true });
+    await fs.writeFile(path.join(mixedDir, "mixed-test.md"), `---
+type: research
+created: 2026-01-01
+tags:
+  - test
+---
+# Mixed Test
+
+Content here.
+
+## Related
+`);
+
+    const freshHandlers = await freshHandlersForAddLinks(tmpDir);
+    const result = await freshHandlers.get("vault_add_links")({
+      path: "add-links-mixed/mixed-test.md",
+      links: [
+        { target: "notes/alpha.md", annotation: "valid link" },
+        { target: "notes/nonexistent.md", annotation: "bad link" },
+        { target: "notes/beta.md", annotation: "another valid" },
+      ],
+    });
+    const text = result.content[0].text;
+    assert.ok(text.includes("Added 2"), "2 valid links added");
+    assert.ok(text.includes("Skipped 1"), "1 invalid skipped");
   });
 });
