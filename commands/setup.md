@@ -20,9 +20,13 @@ If the path is valid, instruct the user to add `export VAULT_PATH="/absolute/pat
 ## Step 2: OpenAI API Key (Optional)
 
 Ask if they want semantic search features (vault_semantic_search, vault_suggest_links). If yes:
-- Ask for their OpenAI API key
-- Instruct them to add `export OPENAI_API_KEY="sk-..."` to their shell profile
-- Explain this enables 2 additional tools but is completely optional
+- **NEVER ask the user to type their API key in the chat** — it would be stored in conversation history
+- Instead, tell them to run this command themselves (they should type `!` followed by the command in the prompt, or run it in a separate terminal):
+  ```
+  echo 'export OPENAI_API_KEY="sk-YOUR-KEY-HERE"' >> ~/.zshrc && source ~/.zshrc
+  ```
+- Explain this enables 2 additional tools (semantic search + link suggestions) but is completely optional
+- Explain they need to replace `sk-YOUR-KEY-HERE` with their actual key from https://platform.openai.com/api-keys
 
 ## Step 3: Verify Setup
 
