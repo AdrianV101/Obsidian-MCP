@@ -1,11 +1,18 @@
 {
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "obsidian-pkm-marketplace",
   "description": "Obsidian PKM Plugin for Claude Code",
+  "owner": {
+    "name": "Adrian Verhoosel",
+    "email": "noreply@github.com"
+  },
   "plugins": [
     {
       "name": "obsidian-pkm",
-      "description": "Bidirectional knowledge flow between Claude Code and Obsidian — tools, skills, and hooks for PKM",
-      "source": "."
+      "description": "Bidirectional knowledge flow between Claude Code and Obsidian — 21 MCP tools, skills, and hooks for PKM",
+      "category": "productivity",
+      "source": ".",
+      "homepage": "https://github.com/AdrianV101/obsidian-pkm-plugin"
     }
   ]
 }
