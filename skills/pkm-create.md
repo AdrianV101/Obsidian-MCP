@@ -23,20 +23,36 @@ If `vault_semantic_search` is unavailable (no `OPENAI_API_KEY`), use `vault_sear
 
 ## Step 2: Create the Note
 
-Use `vault_write` with the appropriate template and frontmatter:
+Use `vault_write` with the appropriate template. Select the template and path based on content type:
+
+| Content Type | Template | Default Path |
+|---|---|---|
+| Architecture decision | `adr` | `<project>/development/decisions/ADR-NNN-{title}.md` |
+| Research finding | `research-note` | `<project>/research/{title}.md` |
+| Bug investigation | `troubleshooting-log` | `<project>/development/debug/{title}.md` |
+| Reusable knowledge | `permanent-note` | `03-Resources/Development/{title}.md` |
+| Task | `task` | `<project>/tasks/{title}.md` |
+| Meeting record | `meeting-notes` | `<project>/planning/{title}.md` |
+| Literature/article notes | `literature-note` | `03-Resources/{title}.md` |
+
+Where `<project>` is the vault project path from session context (e.g., `01-Projects/MyApp`). Use the `# PKM:` annotation in CLAUDE.md or the SessionStart hook context to determine the project path.
+
+**Notes in `03-Resources/`** should be written as project-agnostic knowledge — useful regardless of where the insight originated. Use frontmatter tags or `## Related` links to trace the origin project, but write the content for a general audience.
+
+If CLAUDE.md specifies a different location for a content type, use that instead.
 
 ```
 vault_write({
   template: "<template>",
-  path: "<vault-relative-path>",
+  path: "<path-from-table>",
   frontmatter: { tags: [...], ... }
 })
 ```
 
 Ensure:
-- Correct template for the note type (see CLAUDE.md "What to Document" table)
 - At least one meaningful tag
-- Path follows vault conventions
+- `{title}` uses kebab-case (e.g., `cache-eviction-strategies`)
+- For ADRs, use `vault_list` on the decisions directory to determine the next NNN number
 
 ## Step 3: Discover Connections
 
