@@ -424,16 +424,6 @@ describe("isPkmHookEntry", () => {
     assert.equal(isPkmHookEntry(entry), true);
   });
 
-  it("matches entry with stop-sweep.js basename", () => {
-    const entry = { hooks: [{ type: "command", command: '/path/to/stop-sweep.js' }] };
-    assert.equal(isPkmHookEntry(entry), true);
-  });
-
-  it("matches entry with capture-handler.sh basename", () => {
-    const entry = { hooks: [{ type: "command", command: '/path/to/capture-handler.sh' }] };
-    assert.equal(isPkmHookEntry(entry), true);
-  });
-
   it("does not match unrelated hook entry", () => {
     const entry = { hooks: [{ type: "command", command: '/usr/local/bin/my-hook.sh' }] };
     assert.equal(isPkmHookEntry(entry), false);
@@ -455,12 +445,12 @@ describe("buildHookEntries", () => {
   const hooksDir = "/home/user/.claude/hooks/pkm";
 
   it("returns empty object when no hooks enabled", () => {
-    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: false, stopSweep: false, captureHandler: false });
+    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: false });
     assert.deepEqual(result, {});
   });
 
   it("builds SessionStart entry when enabled", () => {
-    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: true, stopSweep: false, captureHandler: false });
+    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: true });
     assert.ok(result.SessionStart);
     assert.equal(result.SessionStart.length, 1);
     assert.equal(result.SessionStart[0].matcher, "startup|clear|compact");
@@ -470,30 +460,14 @@ describe("buildHookEntries", () => {
     assert.equal(result.SessionStart[0].hooks[0].statusMessage, "Loading PKM project context...");
   });
 
-  it("builds Stop entry when enabled", () => {
-    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: false, stopSweep: true, captureHandler: false });
-    assert.ok(result.Stop);
-    assert.equal(result.Stop[0].hooks[0].async, true);
-    assert.ok(result.Stop[0].hooks[0].command.includes("stop-sweep.js"));
-  });
-
-  it("builds PostToolUse entry when enabled", () => {
-    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: false, stopSweep: false, captureHandler: true });
-    assert.ok(result.PostToolUse);
-    assert.equal(result.PostToolUse[0].matcher, "mcp__obsidian-pkm__vault_capture");
-    assert.ok(result.PostToolUse[0].hooks[0].command.includes("capture-handler.sh"));
-    assert.equal(result.PostToolUse[0].hooks[0].async, true);
-  });
-
-  it("builds all three when all enabled", () => {
-    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: true, stopSweep: true, captureHandler: true });
+  it("only builds SessionStart (no other hook types)", () => {
+    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: true });
     assert.ok(result.SessionStart);
-    assert.ok(result.Stop);
-    assert.ok(result.PostToolUse);
+    assert.equal(Object.keys(result).length, 1);
   });
 
   it("escapes vault path with double quotes in command", () => {
-    const result = buildHookEntries("/path/with spaces/vault", hooksDir, { sessionStart: true, stopSweep: false, captureHandler: false });
+    const result = buildHookEntries("/path/with spaces/vault", hooksDir, { sessionStart: true });
     assert.ok(result.SessionStart[0].hooks[0].command.includes('VAULT_PATH="/path/with spaces/vault"'));
   });
 });
@@ -567,41 +541,41 @@ describe("mergeHooksIntoSettings", () => {
   it("removes PKM entries for disabled events", async () => {
     const existing = {
       hooks: {
-        Stop: [{ hooks: [{ type: "command", command: "/path/hooks/pkm/stop-sweep.js" }] }],
+        SessionStart: [{ hooks: [{ type: "command", command: "/path/hooks/pkm/session-start.js" }] }],
       },
     };
     await fs.writeFile(settingsPath, JSON.stringify(existing));
-    await mergeHooksIntoSettings(settingsPath, {}, ["Stop"]);
+    await mergeHooksIntoSettings(settingsPath, {}, ["SessionStart"]);
     const content = JSON.parse(await fs.readFile(settingsPath, "utf8"));
-    assert.equal(content.hooks.Stop, undefined);
+    assert.equal(content.hooks.SessionStart, undefined);
   });
 
   it("removes event key when array becomes empty after disabling", async () => {
     const existing = {
       hooks: {
-        PostToolUse: [{ matcher: "mcp__obsidian-pkm__vault_capture", hooks: [{ type: "command", command: "/path/hooks/pkm/capture-handler.sh" }] }],
+        SessionStart: [{ hooks: [{ type: "command", command: "/path/hooks/pkm/session-start.js" }] }],
       },
     };
     await fs.writeFile(settingsPath, JSON.stringify(existing));
-    await mergeHooksIntoSettings(settingsPath, {}, ["PostToolUse"]);
+    await mergeHooksIntoSettings(settingsPath, {}, ["SessionStart"]);
     const content = JSON.parse(await fs.readFile(settingsPath, "utf8"));
-    assert.ok(!("PostToolUse" in (content.hooks || {})));
+    assert.ok(!("SessionStart" in (content.hooks || {})));
   });
 
   it("keeps unrelated entries when disabling PKM hook for that event", async () => {
     const existing = {
       hooks: {
-        Stop: [
+        SessionStart: [
           { hooks: [{ type: "command", command: "/my/other-hook.sh" }] },
-          { hooks: [{ type: "command", command: "/path/hooks/pkm/stop-sweep.js" }] },
+          { hooks: [{ type: "command", command: "/path/hooks/pkm/session-start.js" }] },
         ],
       },
     };
     await fs.writeFile(settingsPath, JSON.stringify(existing));
-    await mergeHooksIntoSettings(settingsPath, {}, ["Stop"]);
+    await mergeHooksIntoSettings(settingsPath, {}, ["SessionStart"]);
     const content = JSON.parse(await fs.readFile(settingsPath, "utf8"));
-    assert.equal(content.hooks.Stop.length, 1);
-    assert.ok(content.hooks.Stop[0].hooks[0].command.includes("other-hook"));
+    assert.equal(content.hooks.SessionStart.length, 1);
+    assert.ok(content.hooks.SessionStart[0].hooks[0].command.includes("other-hook"));
   });
 
   it("returns { error } for malformed JSON without modifying the file", async () => {
@@ -633,17 +607,15 @@ describe("copyHooks", () => {
     await fs.writeFile(path.join(srcDir, "session-start.js"), '#!/usr/bin/env node\nconsole.log("hello");\n');
     await fs.writeFile(path.join(srcDir, "resolve-project.js"), 'export function resolveProject() {}\n');
     await fs.writeFile(path.join(srcDir, "load-context.js"), 'export function loadProjectContext() {}\n');
-    await fs.writeFile(path.join(srcDir, "stop-sweep.js"), '#!/usr/bin/env node\nconsole.log("sweep");\n');
-    await fs.writeFile(path.join(srcDir, "capture-handler.sh"), '#!/usr/bin/env bash\nSCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)\nMCP_CONFIG=$(node -e "original")\necho done\n');
     // Also add README.md to ensure it's NOT copied
     await fs.writeFile(path.join(srcDir, "README.md"), "# Docs\n");
   });
 
-  it("copies all 5 hook files to destination", async () => {
+  it("copies all 3 hook files to destination", async () => {
     const installType = { command: "npx", args: ["-y", "obsidian-pkm@latest"] };
     await copyHooks(srcDir, destDir, installType);
     const files = (await fs.readdir(destDir)).sort();
-    assert.deepEqual(files, ["capture-handler.sh", "load-context.js", "resolve-project.js", "session-start.js", "stop-sweep.js"]);
+    assert.deepEqual(files, ["load-context.js", "resolve-project.js", "session-start.js"]);
   });
 
   it("does not copy README.md", async () => {
@@ -651,21 +623,6 @@ describe("copyHooks", () => {
     await copyHooks(srcDir, destDir, installType);
     const files = await fs.readdir(destDir);
     assert.ok(!files.includes("README.md"));
-  });
-
-  it("patches MCP_CONFIG in shell scripts", async () => {
-    const installType = { command: "npx", args: ["-y", "obsidian-pkm@latest"] };
-    await copyHooks(srcDir, destDir, installType);
-    const captureContent = await fs.readFile(path.join(destDir, "capture-handler.sh"), "utf8");
-    assert.ok(!captureContent.includes('$(node -e "original")'));
-    assert.ok(captureContent.includes('"command":"npx"'));
-  });
-
-  it("does not patch stop-sweep.js (auto-detects MCP config)", async () => {
-    const installType = { command: "npx", args: ["-y", "obsidian-pkm@latest"] };
-    await copyHooks(srcDir, destDir, installType);
-    const sweepContent = await fs.readFile(path.join(destDir, "stop-sweep.js"), "utf8");
-    assert.equal(sweepContent, '#!/usr/bin/env node\nconsole.log("sweep");\n');
   });
 
   it("does not patch JS files", async () => {
@@ -680,7 +637,7 @@ describe("copyHooks", () => {
     const installType = { command: "npx", args: ["-y", "obsidian-pkm@latest"] };
     await copyHooks(srcDir, nested, installType);
     const files = await fs.readdir(nested);
-    assert.equal(files.length, 5);
+    assert.equal(files.length, 3);
   });
 
   it("overwrites existing files", async () => {

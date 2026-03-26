@@ -233,7 +233,7 @@ export function patchMcpConfig(scriptContent, installType) {
   return result.join("\n");
 }
 
-const PKM_HOOK_BASENAMES = new Set(["session-start.js", "stop-sweep.js", "capture-handler.sh"]);
+const PKM_HOOK_BASENAMES = new Set(["session-start.js"]);
 
 /**
  * Detect if a hook entry is a PKM hook (by path substring or script basename).
@@ -256,8 +256,8 @@ export function isPkmHookEntry(entry) {
  * Build settings.json hook config entries for enabled hooks.
  * @param {string} vaultPath - Absolute vault path
  * @param {string} hooksDir - Absolute path to installed hooks directory
- * @param {{ sessionStart: boolean, stopSweep: boolean, captureHandler: boolean }} enabledHooks
- * @returns {Object} Hook entries keyed by event name (SessionStart, Stop, PostToolUse)
+ * @param {{ sessionStart: boolean }} enabledHooks
+ * @returns {Object} Hook entries keyed by event name (SessionStart)
  */
 export function buildHookEntries(vaultPath, hooksDir, enabledHooks) {
   const entries = {};
@@ -270,29 +270,6 @@ export function buildHookEntries(vaultPath, hooksDir, enabledHooks) {
         command: `VAULT_PATH="${vaultPath}" node ${path.join(hooksDir, "session-start.js")}`,
         timeout: 15,
         statusMessage: "Loading PKM project context...",
-      }],
-    }];
-  }
-
-  if (enabledHooks.stopSweep) {
-    entries.Stop = [{
-      hooks: [{
-        type: "command",
-        command: `VAULT_PATH="${vaultPath}" node ${path.join(hooksDir, "stop-sweep.js")}`,
-        async: true,
-        timeout: 10,
-      }],
-    }];
-  }
-
-  if (enabledHooks.captureHandler) {
-    entries.PostToolUse = [{
-      matcher: "mcp__obsidian-pkm__vault_capture",
-      hooks: [{
-        type: "command",
-        command: `VAULT_PATH="${vaultPath}" ${path.join(hooksDir, "capture-handler.sh")}`,
-        async: true,
-        timeout: 10,
       }],
     }];
   }
@@ -347,8 +324,8 @@ export async function mergeHooksIntoSettings(settingsPath, hookEntries, disabled
   return {};
 }
 
-const HOOK_FILES = ["session-start.js", "resolve-project.js", "load-context.js", "stop-sweep.js", "capture-handler.sh"];
-const SHELL_HOOKS = new Set(["capture-handler.sh"]);
+const HOOK_FILES = ["session-start.js", "resolve-project.js", "load-context.js"];
+const SHELL_HOOKS = new Set();
 
 /**
  * Copy hook scripts to destination, patching shell scripts with correct MCP config.
@@ -607,27 +584,13 @@ Nothing is written until you confirm each step. Press Ctrl+C at any time to canc
           default: true,
         });
 
-        const enableStopSweep = await confirmPrompt({
-          message: "Enable passive capture? After each Claude response, a background agent scans the conversation for decisions, task changes, and research findings, and stages them in your vault's inbox.",
-          default: true,
-        });
-
-        const enableCaptureHandler = await confirmPrompt({
-          message: "Enable explicit capture? When Claude calls vault_capture, a background agent creates a properly structured vault note (ADR, task, research note, or bug report) from the capture payload.",
-          default: true,
-        });
-
         const enabledHooks = {
           sessionStart: enableSessionStart,
-          stopSweep: enableStopSweep,
-          captureHandler: enableCaptureHandler,
         };
 
         const hookEntries = buildHookEntries(vaultPath, hooksDir, enabledHooks);
         const disabledEvents = [];
         if (!enableSessionStart) disabledEvents.push("SessionStart");
-        if (!enableStopSweep) disabledEvents.push("Stop");
-        if (!enableCaptureHandler) disabledEvents.push("PostToolUse");
 
         const settingsPath = path.join(os.homedir(), ".claude", "settings.json");
         const mergeResult = await mergeHooksIntoSettings(settingsPath, hookEntries, disabledEvents);
@@ -638,8 +601,6 @@ Nothing is written until you confirm each step. Press Ctrl+C at any time to canc
         } else {
           const names = [];
           if (enableSessionStart) names.push("context-loading");
-          if (enableStopSweep) names.push("passive-capture");
-          if (enableCaptureHandler) names.push("explicit-capture");
           hooksSummary = names.length > 0 ? names.join(", ") : "none";
           console.log(`  Hooks configured: ${hooksSummary}`);
         }
