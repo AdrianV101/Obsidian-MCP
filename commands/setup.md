@@ -32,15 +32,16 @@ Read the file first, merge with existing env vars (don't overwrite other setting
 Ask if they want semantic search features (vault_semantic_search, vault_suggest_links). If yes:
 
 - **NEVER ask the user to type their API key in the chat** — it would be stored in conversation history
-- Tell them to open `~/.claude/settings.json` in their text editor (outside of Claude Code) and add `OPENAI_API_KEY` to the `env` block:
+- Tell them to open `~/.claude/settings.json` in their text editor (outside of Claude Code) and add `OBSIDIAN_PKM_OPENAI_KEY` to the `env` block:
   ```json
   {
     "env": {
       "VAULT_PATH": "/path/to/vault",
-      "OPENAI_API_KEY": "sk-your-key-here"
+      "OBSIDIAN_PKM_OPENAI_KEY": "sk-your-key-here"
     }
   }
   ```
+- Explain the variable is named `OBSIDIAN_PKM_OPENAI_KEY` (not `OPENAI_API_KEY`) to avoid conflicts with project-scoped OpenAI keys
 - Explain they can get a key from https://platform.openai.com/api-keys
 - Explain this enables 2 additional tools (semantic search + link suggestions) but is completely optional
 - Tell them to restart Claude Code after saving the file
@@ -77,5 +78,5 @@ If found:
 
 Confirm setup is complete. Tell the user:
 - "Your Obsidian PKM plugin is configured. Try asking me to list your vault folders to verify."
-- If OPENAI_API_KEY was set: "Semantic search will build its index in the background on first use."
+- If OBSIDIAN_PKM_OPENAI_KEY was set: "Semantic search will build its index in the background on first use."
 - **Important**: "Restart your Claude Code session for the MCP server to pick up the new environment variables."

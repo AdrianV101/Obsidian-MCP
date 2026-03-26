@@ -40,8 +40,8 @@ The project consists of three parts:
 - `vault_edit` - Surgical string replacement (exact match, single occurrence)
 - `vault_update_frontmatter` - Update YAML frontmatter fields atomically (set, create, remove fields)
 - `vault_search` - Full-text search across markdown files
-- `vault_semantic_search` - Semantic similarity search using OpenAI embeddings (requires `OPENAI_API_KEY`)
-- `vault_suggest_links` - Suggest relevant notes to link based on content similarity; `graph_context: true` for graph-semantic blending (requires `OPENAI_API_KEY`)
+- `vault_semantic_search` - Semantic similarity search using OpenAI embeddings (requires `OBSIDIAN_PKM_OPENAI_KEY` or `OPENAI_API_KEY`)
+- `vault_suggest_links` - Suggest relevant notes to link based on content similarity; `graph_context: true` for graph-semantic blending (requires `OBSIDIAN_PKM_OPENAI_KEY` or `OPENAI_API_KEY`)
 - `vault_list` / `vault_recent` - Directory listing and recent files
 - `vault_links` - Wikilink analysis (`[[...]]` syntax)
 - `vault_neighborhood` - Graph context exploration via BFS wikilink traversal
@@ -70,7 +70,7 @@ Explores the graph neighborhood around a note by traversing wikilinks using BFS.
 
 Finds conceptually related notes even when they use different terminology. For example, searching "managing overwhelm" finds notes about "cognitive load" or "information overload".
 
-- Requires `OPENAI_API_KEY` env var — tool is hidden from tool list when not set
+- Requires `OBSIDIAN_PKM_OPENAI_KEY` or `OPENAI_API_KEY` env var — tool is hidden from tool list when not set
 - Uses OpenAI `text-embedding-3-large` (3072 dimensions)
 - Index stored at `$VAULT_PATH/.obsidian/semantic-index.db` (SQLite + sqlite-vec)
 - Background `fs.watch` keeps index fresh; startup sync catches changes made while server was stopped
@@ -271,11 +271,11 @@ obsidian-pkm init
 # Or register manually
 claude mcp add -s user \
   -e VAULT_PATH=/absolute/path/to/obsidian/vault \
-  -e OPENAI_API_KEY=sk-... \
+  -e OBSIDIAN_PKM_OPENAI_KEY=sk-... \
   -- obsidian-pkm npx -y obsidian-pkm@latest
 ```
 
-`OPENAI_API_KEY` is optional — without it, all tools except `vault_semantic_search` and `vault_suggest_links` work normally.
+`OBSIDIAN_PKM_OPENAI_KEY` (or `OPENAI_API_KEY`) is optional — without it, all tools except `vault_semantic_search` and `vault_suggest_links` work normally. The plugin-scoped name avoids conflicts with project-level OpenAI keys.
 
 ## Vault Structure Convention
 

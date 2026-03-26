@@ -552,7 +552,7 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
       templateDescriptions = "(No templates found - add .md files to 05-Templates/)";
     }
 
-    const openaiApiKey = process.env.OPENAI_API_KEY;
+    const openaiApiKey = process.env.OBSIDIAN_PKM_OPENAI_KEY || process.env.OPENAI_API_KEY;
     if (openaiApiKey && !openaiApiKey.startsWith("${")) {
       try {
         semanticIndex = new SemanticIndex({ vaultPath: VAULT_PATH, openaiApiKey });

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.1.6] - 2026-03-26
+
+### Changed
+- OpenAI API key now read from `OBSIDIAN_PKM_OPENAI_KEY` (with `OPENAI_API_KEY` fallback) — plugin-scoped variable avoids conflicts with project-level keys
+- Setup command updated to use `OBSIDIAN_PKM_OPENAI_KEY` in `settings.json` env
+
 ## [2.1.5] - 2026-03-26
 
 ### Added
@@ -270,7 +276,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Atomic file creation in `vault_write` (`wx` flag) prevents race conditions
 - Error messages sanitized to prevent leaking absolute vault paths
 
-[Unreleased]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v2.1.5...HEAD
+[Unreleased]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v2.1.6...HEAD
+[2.1.6]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v2.1.5...v2.1.6
 [2.1.5]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v2.1.4...v2.1.5
 [2.1.4]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v2.1.3...v2.1.4
 [2.1.3]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v2.1.2...v2.1.3
