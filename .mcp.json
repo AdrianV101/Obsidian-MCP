@@ -1,7 +1,7 @@
 {
   "obsidian-pkm": {
-    "command": "node",
-    "args": ["${CLAUDE_PLUGIN_ROOT}/cli.js"],
+    "command": "npx",
+    "args": ["-y", "obsidian-pkm@latest"],
     "env": {
       "VAULT_PATH": "${VAULT_PATH}",
       "OPENAI_API_KEY": "${OPENAI_API_KEY}"
