@@ -56,12 +56,15 @@ Note which files were created, modified, and searched.
 
 Review the session's conversation for significant work that only exists in chat history:
 
-| Found in conversation | Create with pkm-create |
-|----------------------|----------------------|
-| Architecture/design decisions | ADR (template: `adr`) |
-| Research findings or evaluations | Research note (template: `research-note`) |
-| Complex debugging sessions | Troubleshooting log (template: `troubleshooting-log`) |
-| Reusable insights or patterns | Permanent note (template: `permanent-note`) |
+| Found in conversation | Template | Default Path |
+|---|---|---|
+| Architecture/design decisions | `adr` | `<project>/development/decisions/ADR-NNN-{title}.md` |
+| Research findings or evaluations | `research-note` | `<project>/research/{title}.md` |
+| Complex debugging sessions | `troubleshooting-log` | `<project>/development/debug/{title}.md` |
+| Reusable insights or patterns | `permanent-note` | `03-Resources/Development/{title}.md` |
+| New tasks identified | `task` | `<project>/tasks/{title}.md` |
+
+Where `<project>` is the vault project path from session context. See `pkm-create` Step 2 for the full mapping and Resources guidance.
 
 **Use the pkm-create skill** for each note to get proper duplicate checking and linking.
 

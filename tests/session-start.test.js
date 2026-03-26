@@ -51,8 +51,16 @@ describe("session-start.js", () => {
   }
 
   it("loads project context for matching cwd", async () => {
-    const result = await runHook({ cwd: "/home/user/Projects/MyApp" });
+    const cwdDir = path.join(tmpDir, "MyApp");
+    await fs.mkdir(cwdDir, { recursive: true });
+    await fs.writeFile(
+      path.join(cwdDir, "CLAUDE.md"),
+      "# PKM: 01-Projects/MyApp\n\n## PKM Integration\n\nConfigured.\n"
+    );
+
+    const result = await runHook({ cwd: cwdDir });
     assert.ok(result.hookSpecificOutput.additionalContext.includes("MyApp"));
+    assert.equal(result.systemMessage, undefined);
   });
 
   it("returns JSON error for invalid JSON input", async () => {
@@ -83,5 +91,39 @@ describe("session-start.js", () => {
   it("returns JSON error when project not found", async () => {
     const result = await runHook({ cwd: "/home/user/Projects/unknown" });
     assert.ok(result.hookSpecificOutput.additionalContext.includes("No vault project found"));
+  });
+
+  it("returns systemMessage when CLAUDE.md has no PKM Integration section", async () => {
+    const cwdDir = path.join(tmpDir, "MyApp");
+    await fs.mkdir(cwdDir, { recursive: true });
+    await fs.writeFile(path.join(cwdDir, "CLAUDE.md"), "# MyApp\n\nSome instructions.\n");
+
+    const result = await runHook({ cwd: cwdDir });
+    assert.ok(result.systemMessage);
+    assert.ok(result.systemMessage.includes("init-project"));
+    assert.ok(result.hookSpecificOutput.additionalContext.includes("not configured"));
+    assert.ok(result.hookSpecificOutput.additionalContext.includes("PKM Project Context"));
+  });
+
+  it("returns systemMessage when no CLAUDE.md exists", async () => {
+    const cwdDir = path.join(tmpDir, "MyApp");
+    await fs.mkdir(cwdDir, { recursive: true });
+
+    const result = await runHook({ cwd: cwdDir });
+    assert.ok(result.systemMessage);
+    assert.ok(result.systemMessage.includes("init-project"));
+  });
+
+  it("does not return systemMessage when CLAUDE.md has PKM Integration section", async () => {
+    const cwdDir = path.join(tmpDir, "MyApp");
+    await fs.mkdir(cwdDir, { recursive: true });
+    await fs.writeFile(
+      path.join(cwdDir, "CLAUDE.md"),
+      "# PKM: 01-Projects/MyApp\n\n## PKM Integration\n\nConfigured.\n"
+    );
+
+    const result = await runHook({ cwd: cwdDir });
+    assert.equal(result.systemMessage, undefined);
+    assert.ok(result.hookSpecificOutput.additionalContext.includes("MyApp"));
   });
 });
