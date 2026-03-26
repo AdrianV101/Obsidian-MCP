@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-03-26
+
+### Added
+- **`vault_add_links` tool** — Atomic link insertion with annotations, deduplication by basename (case-insensitive), section creation, and ambiguous basename disambiguation (uses full path when needed)
+- **`vault_link_health` tool** — Graph health report: orphans (no links), broken links (missing targets), weakly connected (only 1 link), and ambiguous links (basename resolves to multiple files). Uses `buildIncomingIndex` for single-pass O(M) performance
+- **`vault_suggest_links` `graph_context` param** — Blends semantic scores with graph proximity, flags notes not in the graph as missing links. Overfetches candidates and trims post-blending for optimal re-ranking
+- **`vault_neighborhood` `include_semantic` param** — Appends semantically related but unlinked notes with frontmatter metadata (type, tags). Shows "(Semantic expansion skipped)" when OPENAI_API_KEY not set
+- **`vault_semantic_search` `anchor` + `graph_weight` params** — Graph-distance weighted results biased toward an anchor note's neighborhood. Validates graph_weight (0-1, rejects NaN), excludes anchor from its own results
+- **`computeProximityBonus` utility** — Shared depth-to-score mapping for graph-semantic blending (depth 0-1: 1.0, 2: 0.5, 3: 0.25, 4+: 0)
+- **`pkm-create` skill** — Note creation with duplicate checking, link discovery, annotations, bidirectional linking, and index updates
+- **`pkm-explore` skill** — Topic exploration combining graph traversal with semantic search and gap analysis
+- **`pkm-session-end` skill** — Session wrap-up with devlog entry, undocumented work capture, link audit, and index updates
+- **`vault_activity` session ID prefix matching** — Session filter now uses LIKE prefix matching instead of exact match, fixing the truncated 8-char ID issue
+- Standardized `## Related` sections across 7 templates with format hint comments
+- Exported `buildIncomingIndex` from `graph.js` for external use
+
+### Changed
+- Tool count: 19 → 21 (added `vault_add_links` and `vault_link_health`)
+- Skills updated to use `vault_add_links` (was `vault_append`) and `vault_link_health` (was manual checking)
+- `sample-project/CLAUDE.md` simplified — procedural PKM workflow sections replaced with skill references
+- Devlog template stripped of placeholder session entry (skill appends real entries)
+- CLAUDE.md fuzzy resolution lists updated with new tools
+
+### Fixed
+- `vault_activity` session filter used exact match on truncated 8-char IDs (now prefix matching via LIKE)
+- Stale JSDoc references to `buildLinkResolutionMap` (renamed to `buildBasenameMap`)
+- Devlog template `## Sessions` heading structure (date entries demoted to `###`, sub-sections to `####`)
+
 ## [2.0.0] - 2026-03-24
 
 ### Breaking Changes
@@ -211,7 +239,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Atomic file creation in `vault_write` (`wx` flag) prevents race conditions
 - Error messages sanitized to prevent leaking absolute vault paths
 
-[Unreleased]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.6.0...v2.0.0
 [1.6.0]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.5.3...v1.6.0
 [1.5.3]: https://github.com/AdrianV101/obsidian-pkm-plugin/compare/v1.5.2...v1.5.3
