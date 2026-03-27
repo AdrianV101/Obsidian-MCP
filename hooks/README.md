@@ -1,22 +1,20 @@
 # PKM Hook System
 
-Claude Code hooks that enable automatic knowledge capture during coding sessions.
+Claude Code hook that loads project context from the vault at the start of each session.
 
 ## Overview
 
-The hook system consists of three hooks:
+The hook system consists of one hook:
 
 | Hook | Event | Purpose |
 |------|-------|---------|
 | `session-start.js` | SessionStart | Loads project context from the vault at the start of each session |
-| `stop-sweep.js` | Stop | PKM librarian: creates structured, graph-linked vault notes from the latest exchange |
-| `capture-handler.sh` | PostToolUse | Explicit capture: creates structured vault notes when `vault_capture` is called |
 
 ### How it works
 
-- **SessionStart** (`session-start.js`): Runs synchronously. Resolves the current working directory to a vault project, reads the project index, recent devlog entries, and active tasks, then injects them as context.
-- **Stop** (`stop-sweep.js`): Runs asynchronously after each assistant response. Resolves the current working directory to a vault project (no project = no captures). Spawns a background `claude -p` (Sonnet, 15 turns) that reads the transcript, classifies PKM-worthy content from the latest exchange, and creates properly structured vault notes in the project directory with wikilinks to related notes.
-- **PostToolUse** (`capture-handler.sh`): Runs asynchronously after `vault_capture` tool use. Spawns a background `claude -p` (Opus, 30 turns) that creates a properly structured vault note (ADR, task, research note, or troubleshooting log) from the capture payload with graph links.
+- **SessionStart** (`session-start.js`): Runs synchronously at session start, clear, or compact. Resolves the current working directory to a vault project, reads the project index, recent devlog entries, and active tasks, then injects them as context into the session.
+
+Passive knowledge capture (decisions, research findings, tasks, bug root causes) is handled by the **knowledge-sweeper** and **devlog-updater** canonical agents, which can be invoked directly or run in the background after significant work blocks.
 
 ## Setup
 
@@ -45,31 +43,6 @@ Add the following to your `~/.claude/settings.json`:
           }
         ]
       }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "VAULT_PATH=\"/path/to/your/vault\" node /path/to/obsidian-pkm-plugin/hooks/stop-sweep.js",
-            "async": true,
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "mcp__obsidian-pkm__vault_capture",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "VAULT_PATH=\"/path/to/your/vault\" /path/to/obsidian-pkm-plugin/hooks/capture-handler.sh",
-            "async": true,
-            "timeout": 10
-          }
-        ]
-      }
     ]
   }
 }
@@ -79,47 +52,35 @@ Replace `/path/to/your/vault` with the absolute path to your Obsidian vault (e.g
 
 ## Architecture Notes
 
-### Command hooks with background subprocesses
+### Command hook
 
-The hook system uses `type: "command"` hooks (not `type: "agent"`). The shell scripts themselves exit quickly (within the configured timeout), but they spawn `claude -p` as a detached background process via `nohup ... &`. This means:
-
-- The hook script exits immediately, satisfying the timeout constraint
-- The `claude -p` process continues running independently, doing the actual vault work
-- `--max-turns` limits how many tool calls the background process can make (15 for stop-sweep, 30 for capture-handler)
+The hook system uses a `type: "command"` hook that runs synchronously. `session-start.js` reads vault files directly and writes the context to stdout, which Claude Code injects into the session. It exits cleanly within the configured timeout.
 
 ### MCP config resolution
 
-The hook scripts resolve their own location to construct the path to `index.js`. `stop-sweep.js` uses the ES module pattern (`import.meta.url` → `fileURLToPath` → `path.dirname`), while `capture-handler.sh` uses the POSIX pattern (`cd "$(dirname "$0")" && pwd -P`). Both work regardless of current working directory. The `VAULT_PATH` environment variable must be set in the hook command because hook scripts run outside the MCP server process.
+`session-start.js` imports its helper modules (`resolve-project.js`, `load-context.js`) using relative paths from the same directory. The `VAULT_PATH` environment variable must be set in the hook command because the hook script runs outside the MCP server process.
 
-### Async behavior
+### Helper modules
 
-Both `stop-sweep.js` and `capture-handler.sh` use `async: true` in the hook config. This means Claude Code does not wait for the hook script to finish before continuing. The script starts, spawns the background `claude -p` process, and exits. The background process runs to completion on its own.
+`load-context.js` and `resolve-project.js` are shared helpers used by `session-start.js`:
 
-### Noise suppression and deduplication
-
-The stop-sweep hook is conservative by design. It only looks at the last exchange (one user message + one assistant response) and skips trivial interactions. Deduplication is item-level: if the exchange contains a `vault_capture` call, the sweep reads its arguments and skips that specific item, but still captures other PKM-worthy content. The sweep also runs `vault_search` before creating notes to catch duplicates from concurrent sweep instances.
+- **`resolve-project.js`**: Maps the current working directory to a vault project path by reading the `# PKM:` annotation from the repo's `CLAUDE.md`
+- **`load-context.js`**: Reads the project index, recent devlog entries, and active tasks from the vault and formats them as a context block
 
 ## Troubleshooting
 
 ### Hook not firing
 
 - Verify the hook config is valid JSON in `~/.claude/settings.json`
-- Check that the `matcher` pattern matches (SessionStart uses `"startup|clear|compact"`, PostToolUse uses the full MCP tool name)
-- Ensure the script paths are absolute
+- Check that the `matcher` pattern matches (`"startup|clear|compact"`)
+- Ensure the script path is absolute
 
 ### Script errors
 
 - Check that `VAULT_PATH` is set correctly and the directory exists
 - Verify `node` is available in the hook's PATH
-- Test the script manually: `echo '{"cwd":"/tmp","transcript_path":"/tmp/test","session_id":"abc123"}' | VAULT_PATH="/path/to/vault" node ./hooks/stop-sweep.js`
-
-### Background process not running
-
-- Check for `claude` CLI in PATH
-- Look for `claude -p` processes: `ps aux | grep 'claude -p'`
-- Test `claude -p` directly: `echo "say hello" | claude -p --model sonnet`
-- Check logs in `$VAULT_PATH/.obsidian/hook-logs/` for background process output
+- Test the script manually: `echo '{"cwd":"/tmp","transcript_path":"/tmp/test","session_id":"abc123"}' | VAULT_PATH="/path/to/vault" node ./hooks/session-start.js`
 
 ### macOS compatibility
 
-The scripts use POSIX-compatible `cd "$(dirname "$0")" && pwd -P` for path resolution, so they work on both Linux and macOS without additional dependencies.
+The scripts use standard ES module patterns for path resolution, so they work on both Linux and macOS without additional dependencies.

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import os from "os";
 import path from "path";
 import fs from "fs/promises";
-import { resolveInputPath, copyTemplates, scaffoldFolders, backupVault, dirSize, buildMcpAddArgs, detectInstallType, patchMcpConfig, isPkmHookEntry, buildHookEntries, mergeHooksIntoSettings, copyHooks } from "../init.js";
+import { resolveInputPath, copyTemplates, scaffoldFolders, backupVault, dirSize, buildMcpAddArgs, detectInstallType, isPkmHookEntry, buildHookEntries, mergeHooksIntoSettings, copyHooks } from "../init.js";
 
 describe("resolveInputPath", () => {
   it("expands ~ to home directory", () => {
@@ -326,92 +326,6 @@ describe("detectInstallType", () => {
   });
 });
 
-describe("patchMcpConfig", () => {
-  const sampleScript = [
-    '#!/usr/bin/env bash',
-    'set -euo pipefail',
-    'SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)',
-    'MCP_CONFIG=$(node -e "console.log(JSON.stringify({mcpServers:{\'obsidian-pkm\':{command:\'node\',args:[process.argv[1]],env:{VAULT_PATH:process.argv[2]}}}}))" "$SCRIPT_DIR/../index.js" "${VAULT_PATH:-$HOME/Documents/PKM}")',
-    'echo "$MCP_CONFIG"',
-  ].join("\n");
-
-  it("replaces MCP_CONFIG line for npx install", () => {
-    const installType = { command: "npx", args: ["-y", "obsidian-pkm@latest"] };
-    const result = patchMcpConfig(sampleScript, installType);
-    assert.ok(!result.includes('$(node -e'));
-    assert.ok(result.includes('"command":"npx"'));
-    assert.ok(result.includes('"args":["-y","obsidian-pkm@latest"]'));
-    // Verify exact shell quoting: '..."VAULT_PATH":"'"$VAULT_PATH"'"}}}'
-    // The pattern is: close single-quote, open double-quote, $VAULT_PATH, close double-quote, open single-quote
-    assert.ok(result.includes(`'"$VAULT_PATH"'`), "must use correct shell quoting for $VAULT_PATH expansion");
-    // Other lines preserved
-    assert.ok(result.includes('#!/usr/bin/env bash'));
-    assert.ok(result.includes('echo "$MCP_CONFIG"'));
-  });
-
-  it("replaces MCP_CONFIG line for source install", () => {
-    const installType = { command: "node", args: ["/home/user/Projects/Obsidian-MCP/cli.js"] };
-    const result = patchMcpConfig(sampleScript, installType);
-    assert.ok(result.includes('"command":"node"'));
-    assert.ok(result.includes("/home/user/Projects/Obsidian-MCP/cli.js"));
-  });
-
-  it("preserves lines that don't start with MCP_CONFIG=", () => {
-    const result = patchMcpConfig(sampleScript, { command: "npx", args: ["-y", "obsidian-pkm@latest"] });
-    const lines = result.split("\n");
-    assert.equal(lines[0], '#!/usr/bin/env bash');
-    assert.equal(lines[1], 'set -euo pipefail');
-    assert.equal(lines[2], 'SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)');
-    assert.equal(lines[4], 'echo "$MCP_CONFIG"');
-  });
-
-  it("returns script unchanged if no MCP_CONFIG= line found", () => {
-    const noConfig = "#!/bin/bash\necho hello\n";
-    const result = patchMcpConfig(noConfig, { command: "npx", args: ["-y", "obsidian-pkm@latest"] });
-    assert.equal(result, noConfig);
-  });
-
-  it("replaces multi-line MCP_CONFIG=$(node -e ...) block", () => {
-    const multiLineScript = [
-      '#!/usr/bin/env bash',
-      'SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)',
-      'MCP_CONFIG=$(node -e "',
-      "  const { existsSync } = require('fs');",
-      "  const path = require('path');",
-      "  const localIndex = path.join(process.argv[1], '..', 'index.js');",
-      "  console.log(JSON.stringify({ mcpServers: { 'obsidian-pkm': server } }));",
-      '" "$SCRIPT_DIR" "${VAULT_PATH:-$HOME/Documents/PKM}")',
-      'echo "$MCP_CONFIG"',
-    ].join("\n");
-    const installType = { command: "npx", args: ["-y", "obsidian-pkm@latest"] };
-    const result = patchMcpConfig(multiLineScript, installType);
-    // All node -e lines should be gone
-    assert.ok(!result.includes("existsSync"), "node -e body lines must be removed");
-    assert.ok(!result.includes("require('fs')"), "node -e body lines must be removed");
-    assert.ok(!result.includes('$(node -e'), "command substitution must be replaced");
-    // Replacement should be present
-    assert.ok(result.includes('"command":"npx"'));
-    assert.ok(result.includes('"args":["-y","obsidian-pkm@latest"]'));
-    // Surrounding lines preserved
-    assert.ok(result.includes('#!/usr/bin/env bash'));
-    assert.ok(result.includes('echo "$MCP_CONFIG"'));
-    // Should have exactly 4 lines: shebang, SCRIPT_DIR, MCP_CONFIG replacement, echo
-    assert.equal(result.split("\n").length, 4);
-  });
-
-  it("handles already-patched single-line MCP_CONFIG (idempotent)", () => {
-    const patchedScript = [
-      '#!/usr/bin/env bash',
-      `MCP_CONFIG='{"mcpServers":{"obsidian-pkm":{"command":"npx","args":["-y","obsidian-pkm@latest"],"env":{"VAULT_PATH":"'"$VAULT_PATH"'"}}}}'`,
-      'echo done',
-    ].join("\n");
-    const installType = { command: "node", args: ["/new/path/cli.js"] };
-    const result = patchMcpConfig(patchedScript, installType);
-    assert.ok(result.includes('"command":"node"'));
-    assert.ok(result.includes("/new/path/cli.js"));
-    assert.equal(result.split("\n").length, 3);
-  });
-});
 
 describe("isPkmHookEntry", () => {
   it("matches entry with hooks/pkm/ in command", () => {
@@ -424,13 +338,13 @@ describe("isPkmHookEntry", () => {
     assert.equal(isPkmHookEntry(entry), true);
   });
 
-  it("matches entry with stop-sweep.js basename", () => {
-    const entry = { hooks: [{ type: "command", command: '/path/to/stop-sweep.js' }] };
+  it("matches legacy stop-sweep.js basename", () => {
+    const entry = { hooks: [{ type: "command", command: '/home/user/.claude/hooks/pkm/stop-sweep.js' }] };
     assert.equal(isPkmHookEntry(entry), true);
   });
 
-  it("matches entry with capture-handler.sh basename", () => {
-    const entry = { hooks: [{ type: "command", command: '/path/to/capture-handler.sh' }] };
+  it("matches legacy capture-handler.sh basename", () => {
+    const entry = { hooks: [{ type: "command", command: 'VAULT_PATH="/vault" bash /home/user/.claude/hooks/pkm/capture-handler.sh' }] };
     assert.equal(isPkmHookEntry(entry), true);
   });
 
@@ -455,12 +369,12 @@ describe("buildHookEntries", () => {
   const hooksDir = "/home/user/.claude/hooks/pkm";
 
   it("returns empty object when no hooks enabled", () => {
-    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: false, stopSweep: false, captureHandler: false });
+    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: false });
     assert.deepEqual(result, {});
   });
 
   it("builds SessionStart entry when enabled", () => {
-    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: true, stopSweep: false, captureHandler: false });
+    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: true });
     assert.ok(result.SessionStart);
     assert.equal(result.SessionStart.length, 1);
     assert.equal(result.SessionStart[0].matcher, "startup|clear|compact");
@@ -470,30 +384,14 @@ describe("buildHookEntries", () => {
     assert.equal(result.SessionStart[0].hooks[0].statusMessage, "Loading PKM project context...");
   });
 
-  it("builds Stop entry when enabled", () => {
-    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: false, stopSweep: true, captureHandler: false });
-    assert.ok(result.Stop);
-    assert.equal(result.Stop[0].hooks[0].async, true);
-    assert.ok(result.Stop[0].hooks[0].command.includes("stop-sweep.js"));
-  });
-
-  it("builds PostToolUse entry when enabled", () => {
-    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: false, stopSweep: false, captureHandler: true });
-    assert.ok(result.PostToolUse);
-    assert.equal(result.PostToolUse[0].matcher, "mcp__obsidian-pkm__vault_capture");
-    assert.ok(result.PostToolUse[0].hooks[0].command.includes("capture-handler.sh"));
-    assert.equal(result.PostToolUse[0].hooks[0].async, true);
-  });
-
-  it("builds all three when all enabled", () => {
-    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: true, stopSweep: true, captureHandler: true });
+  it("only builds SessionStart (no other hook types)", () => {
+    const result = buildHookEntries(vaultPath, hooksDir, { sessionStart: true });
     assert.ok(result.SessionStart);
-    assert.ok(result.Stop);
-    assert.ok(result.PostToolUse);
+    assert.equal(Object.keys(result).length, 1);
   });
 
   it("escapes vault path with double quotes in command", () => {
-    const result = buildHookEntries("/path/with spaces/vault", hooksDir, { sessionStart: true, stopSweep: false, captureHandler: false });
+    const result = buildHookEntries("/path/with spaces/vault", hooksDir, { sessionStart: true });
     assert.ok(result.SessionStart[0].hooks[0].command.includes('VAULT_PATH="/path/with spaces/vault"'));
   });
 });
@@ -567,41 +465,41 @@ describe("mergeHooksIntoSettings", () => {
   it("removes PKM entries for disabled events", async () => {
     const existing = {
       hooks: {
-        Stop: [{ hooks: [{ type: "command", command: "/path/hooks/pkm/stop-sweep.js" }] }],
+        SessionStart: [{ hooks: [{ type: "command", command: "/path/hooks/pkm/session-start.js" }] }],
       },
     };
     await fs.writeFile(settingsPath, JSON.stringify(existing));
-    await mergeHooksIntoSettings(settingsPath, {}, ["Stop"]);
+    await mergeHooksIntoSettings(settingsPath, {}, ["SessionStart"]);
     const content = JSON.parse(await fs.readFile(settingsPath, "utf8"));
-    assert.equal(content.hooks.Stop, undefined);
+    assert.equal(content.hooks.SessionStart, undefined);
   });
 
   it("removes event key when array becomes empty after disabling", async () => {
     const existing = {
       hooks: {
-        PostToolUse: [{ matcher: "mcp__obsidian-pkm__vault_capture", hooks: [{ type: "command", command: "/path/hooks/pkm/capture-handler.sh" }] }],
+        SessionStart: [{ hooks: [{ type: "command", command: "/path/hooks/pkm/session-start.js" }] }],
       },
     };
     await fs.writeFile(settingsPath, JSON.stringify(existing));
-    await mergeHooksIntoSettings(settingsPath, {}, ["PostToolUse"]);
+    await mergeHooksIntoSettings(settingsPath, {}, ["SessionStart"]);
     const content = JSON.parse(await fs.readFile(settingsPath, "utf8"));
-    assert.ok(!("PostToolUse" in (content.hooks || {})));
+    assert.ok(!("SessionStart" in (content.hooks || {})));
   });
 
   it("keeps unrelated entries when disabling PKM hook for that event", async () => {
     const existing = {
       hooks: {
-        Stop: [
+        SessionStart: [
           { hooks: [{ type: "command", command: "/my/other-hook.sh" }] },
-          { hooks: [{ type: "command", command: "/path/hooks/pkm/stop-sweep.js" }] },
+          { hooks: [{ type: "command", command: "/path/hooks/pkm/session-start.js" }] },
         ],
       },
     };
     await fs.writeFile(settingsPath, JSON.stringify(existing));
-    await mergeHooksIntoSettings(settingsPath, {}, ["Stop"]);
+    await mergeHooksIntoSettings(settingsPath, {}, ["SessionStart"]);
     const content = JSON.parse(await fs.readFile(settingsPath, "utf8"));
-    assert.equal(content.hooks.Stop.length, 1);
-    assert.ok(content.hooks.Stop[0].hooks[0].command.includes("other-hook"));
+    assert.equal(content.hooks.SessionStart.length, 1);
+    assert.ok(content.hooks.SessionStart[0].hooks[0].command.includes("other-hook"));
   });
 
   it("returns { error } for malformed JSON without modifying the file", async () => {
@@ -619,6 +517,36 @@ describe("mergeHooksIntoSettings", () => {
     const raw = await fs.readFile(settingsPath, "utf8");
     assert.ok(raw.includes('  "hooks"'));
   });
+
+  it("upgrade scenario: removes legacy Stop/PostToolUse PKM entries when wizard re-runs", async () => {
+    // Simulate an existing install with legacy hook entries in Stop and PostToolUse
+    const existing = {
+      hooks: {
+        SessionStart: [{ hooks: [{ type: "command", command: 'VAULT_PATH="/vault" node /home/user/.claude/hooks/pkm/session-start.js' }] }],
+        Stop: [
+          { hooks: [{ type: "command", command: '/home/user/.claude/hooks/pkm/stop-sweep.js' }] },
+          { hooks: [{ type: "command", command: '/my/other-stop-hook.sh' }] },
+        ],
+        PostToolUse: [{ hooks: [{ type: "command", command: 'bash /home/user/.claude/hooks/pkm/capture-handler.sh' }] }],
+      },
+    };
+    await fs.writeFile(settingsPath, JSON.stringify(existing));
+
+    // Wizard re-runs with only SessionStart enabled; passes Stop and PostToolUse as disabled
+    const hookEntries = {
+      SessionStart: [{ matcher: "startup|clear|compact", hooks: [{ type: "command", command: 'VAULT_PATH="/vault" node /home/user/.claude/hooks/pkm/session-start.js' }] }],
+    };
+    await mergeHooksIntoSettings(settingsPath, hookEntries, ["Stop", "PostToolUse"]);
+
+    const content = JSON.parse(await fs.readFile(settingsPath, "utf8"));
+    // SessionStart should be updated
+    assert.equal(content.hooks.SessionStart.length, 1);
+    // Legacy Stop PKM entry removed; unrelated Stop hook preserved
+    assert.equal(content.hooks.Stop.length, 1);
+    assert.ok(content.hooks.Stop[0].hooks[0].command.includes("other-stop-hook"));
+    // PostToolUse PKM entry removed; key deleted (was only PKM entry)
+    assert.equal(content.hooks.PostToolUse, undefined);
+  });
 });
 
 describe("copyHooks", () => {
@@ -633,61 +561,39 @@ describe("copyHooks", () => {
     await fs.writeFile(path.join(srcDir, "session-start.js"), '#!/usr/bin/env node\nconsole.log("hello");\n');
     await fs.writeFile(path.join(srcDir, "resolve-project.js"), 'export function resolveProject() {}\n');
     await fs.writeFile(path.join(srcDir, "load-context.js"), 'export function loadProjectContext() {}\n');
-    await fs.writeFile(path.join(srcDir, "stop-sweep.js"), '#!/usr/bin/env node\nconsole.log("sweep");\n');
-    await fs.writeFile(path.join(srcDir, "capture-handler.sh"), '#!/usr/bin/env bash\nSCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)\nMCP_CONFIG=$(node -e "original")\necho done\n');
     // Also add README.md to ensure it's NOT copied
     await fs.writeFile(path.join(srcDir, "README.md"), "# Docs\n");
   });
 
-  it("copies all 5 hook files to destination", async () => {
-    const installType = { command: "npx", args: ["-y", "obsidian-pkm@latest"] };
-    await copyHooks(srcDir, destDir, installType);
+  it("copies all 3 hook files to destination", async () => {
+    await copyHooks(srcDir, destDir);
     const files = (await fs.readdir(destDir)).sort();
-    assert.deepEqual(files, ["capture-handler.sh", "load-context.js", "resolve-project.js", "session-start.js", "stop-sweep.js"]);
+    assert.deepEqual(files, ["load-context.js", "resolve-project.js", "session-start.js"]);
   });
 
   it("does not copy README.md", async () => {
-    const installType = { command: "npx", args: ["-y", "obsidian-pkm@latest"] };
-    await copyHooks(srcDir, destDir, installType);
+    await copyHooks(srcDir, destDir);
     const files = await fs.readdir(destDir);
     assert.ok(!files.includes("README.md"));
   });
 
-  it("patches MCP_CONFIG in shell scripts", async () => {
-    const installType = { command: "npx", args: ["-y", "obsidian-pkm@latest"] };
-    await copyHooks(srcDir, destDir, installType);
-    const captureContent = await fs.readFile(path.join(destDir, "capture-handler.sh"), "utf8");
-    assert.ok(!captureContent.includes('$(node -e "original")'));
-    assert.ok(captureContent.includes('"command":"npx"'));
-  });
-
-  it("does not patch stop-sweep.js (auto-detects MCP config)", async () => {
-    const installType = { command: "npx", args: ["-y", "obsidian-pkm@latest"] };
-    await copyHooks(srcDir, destDir, installType);
-    const sweepContent = await fs.readFile(path.join(destDir, "stop-sweep.js"), "utf8");
-    assert.equal(sweepContent, '#!/usr/bin/env node\nconsole.log("sweep");\n');
-  });
-
-  it("does not patch JS files", async () => {
-    const installType = { command: "npx", args: ["-y", "obsidian-pkm@latest"] };
-    await copyHooks(srcDir, destDir, installType);
+  it("copies JS files verbatim without patching", async () => {
+    await copyHooks(srcDir, destDir);
     const jsContent = await fs.readFile(path.join(destDir, "session-start.js"), "utf8");
     assert.equal(jsContent, '#!/usr/bin/env node\nconsole.log("hello");\n');
   });
 
   it("creates destination directory if it doesn't exist", async () => {
     const nested = path.join(tmpDir, "deep", "nested", "hooks");
-    const installType = { command: "npx", args: ["-y", "obsidian-pkm@latest"] };
-    await copyHooks(srcDir, nested, installType);
+    await copyHooks(srcDir, nested);
     const files = await fs.readdir(nested);
-    assert.equal(files.length, 5);
+    assert.equal(files.length, 3);
   });
 
   it("overwrites existing files", async () => {
     await fs.mkdir(destDir, { recursive: true });
     await fs.writeFile(path.join(destDir, "session-start.js"), "old content");
-    const installType = { command: "npx", args: ["-y", "obsidian-pkm@latest"] };
-    await copyHooks(srcDir, destDir, installType);
+    await copyHooks(srcDir, destDir);
     const content = await fs.readFile(path.join(destDir, "session-start.js"), "utf8");
     assert.ok(content.includes("hello"));
   });

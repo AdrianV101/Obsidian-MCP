@@ -1203,21 +1203,6 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     return { content: [{ type: "text", text: `${header}\n\n${sections.join("\n\n")}` }] };
   }
 
-  async function handleCapture(args) {
-    const { type, title, content } = args;
-    if (!type || !title || !content) {
-      throw new Error(
-        `vault_capture requires type, title, and content. Got: type=${type || "(missing)"}, title=${title || "(missing)"}, content=${content ? "provided" : "(missing)"}`
-      );
-    }
-    return {
-      content: [{
-        type: "text",
-        text: `Capture queued: [${type}] ${title}`
-      }]
-    };
-  }
-
   return new Map([
     ["vault_read", handleRead],
     ["vault_write", handleWrite],
@@ -1237,7 +1222,6 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
     ["vault_trash", handleTrash],
     ["vault_move", handleMove],
     ["vault_update_frontmatter", handleUpdateFrontmatter],
-    ["vault_capture", handleCapture],
     ["vault_add_links", handleAddLinks],
     ["vault_link_health", handleLinkHealth],
   ]);

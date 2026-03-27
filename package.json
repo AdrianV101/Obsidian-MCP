@@ -1,7 +1,7 @@
 {
   "name": "obsidian-pkm",
   "version": "2.1.6",
-  "description": "Claude Code plugin for Obsidian vault integration — 21 MCP tools, hooks, and skills for PKM",
+  "description": "Claude Code plugin for Obsidian vault integration — 20 MCP tools, hooks, and skills for PKM",
   "main": "cli.js",
   "exports": {
     ".": "./cli.js"
@@ -21,6 +21,7 @@
     "templates/",
     "sample-project/",
     ".claude-plugin/",
+    "agents/",
     "commands/",
     "skills/",
     ".mcp.json"

@@ -9,27 +9,6 @@
           "timeout": 15
         }]
       }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "vault_capture",
-        "hooks": [{
-          "type": "command",
-          "command": "VAULT_PATH=${VAULT_PATH} bash ${CLAUDE_PLUGIN_ROOT}/hooks/capture-handler.sh",
-          "timeout": 30,
-          "async": true
-        }]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [{
-          "type": "command",
-          "command": "VAULT_PATH=${VAULT_PATH} node ${CLAUDE_PLUGIN_ROOT}/hooks/stop-sweep.js",
-          "timeout": 15,
-          "async": true
-        }]
-      }
     ]
   }
 }

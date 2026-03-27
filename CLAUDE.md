@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Claude Code plugin that provides an MCP server and supporting tools for bidirectional knowledge flow between Claude Code and an Obsidian vault. It packages 21 MCP tools, Claude Code hooks, and a setup skill under the `obsidian-pkm` plugin identity.
+This is a Claude Code plugin that provides an MCP server and supporting tools for bidirectional knowledge flow between Claude Code and an Obsidian vault. It packages 20 MCP tools, Claude Code hooks, and a setup skill under the `obsidian-pkm` plugin identity.
 
 ## Commands
 
@@ -32,7 +32,7 @@ npm run lint
 
 The project consists of three parts:
 
-**MCP Server**: A Node.js ES module server implementing the Model Context Protocol. The main entry point is `index.js` (tool definitions and request routing), with pure helper functions extracted to `helpers.js`. It provides 21 tools for vault interaction:
+**MCP Server**: A Node.js ES module server implementing the Model Context Protocol. The main entry point is `index.js` (tool definitions and request routing), with pure helper functions extracted to `helpers.js`. It provides 20 tools for vault interaction:
 - `vault_read` - Read note contents (supports pagination: `heading`, `tail`, `tail_sections` [with optional `section_level` param, default: 2], `chunk`, `lines`; auto-redirects to peek data for files >80k chars; `force` bypasses redirect)
 - `vault_peek` - Inspect file metadata/structure without reading full content (size, frontmatter, indented heading tree, preview)
 - `vault_write` - Create new notes from templates (enforces frontmatter; settable fields: `status`, `priority`, `project`, `deciders`, `due`, `source`; `variables` param for custom `<%...%>` substitution in template body)
@@ -50,7 +50,6 @@ The project consists of three parts:
 - `vault_activity` - Query/clear activity log (all tool calls with timestamps and session IDs)
 - `vault_trash` - Soft-delete to `.trash/` (Obsidian convention), warns about broken incoming links
 - `vault_move` - Move/rename files with automatic wikilink updating across vault (`update_links: false` to skip)
-- `vault_capture` - Signal a PKM-worthy capture (decision, task, research, bug); returns immediately, background hook creates the note
 - `vault_add_links` - Add annotated wikilinks to a note's section with deduplication (default: ## Related)
 - `vault_link_health` - Graph health report: orphans, broken links, weakly connected notes, ambiguous links
 
@@ -233,6 +232,21 @@ Folder-scoped tools (`vault_search`, `vault_query`, `vault_tags`, `vault_recent`
 Write/destructive tools (`vault_write`, `vault_append`, `vault_edit`, `vault_trash`, `vault_move`, `vault_add_links`) require exact paths to prevent accidental modifications.
 
 Implementation: `helpers.js` (`buildBasenameMap`, `resolveFuzzyPath`, `resolveFuzzyFolder`)
+
+### PKM Agents
+
+The plugin provides 4 specialized agents (visible in `/agents`). Delegate to them proactively:
+
+| Agent | When to Delegate | Mode |
+|---|---|---|
+| `vault-explorer` | Before creating notes on a topic, when researching existing knowledge | Foreground |
+| `devlog-updater` | After completing a significant development block, before session ends | Background |
+| `knowledge-sweeper` | After significant work that produced decisions, research, tasks, or gotchas | Background |
+| `link-auditor` | After creating/modifying multiple vault notes, periodic health checks | Background |
+
+**Devlog-updater context:** When delegating, include whether this is the first devlog update this session or a subsequent one (with previous entry timestamp). The agent discovers the transcript path itself.
+
+**Knowledge-sweeper is conservative:** Most work produces nothing worth capturing. Only delegate when something genuinely PKM-worthy occurred (decisions, research findings, bug root causes, new tasks).
 
 **Templates** (`templates/`): Obsidian note templates for project documentation:
 - `project-index.md` - Project overview with YAML frontmatter

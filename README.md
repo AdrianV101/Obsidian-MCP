@@ -5,7 +5,7 @@
 [![Node.js >= 20](https://img.shields.io/badge/Node.js-%3E%3D20-green.svg)](https://nodejs.org/)
 [![CI](https://github.com/AdrianV101/obsidian-pkm-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/AdrianV101/obsidian-pkm-plugin/actions/workflows/ci.yml)
 
-A Claude Code plugin that turns your Obsidian vault into persistent, structured memory for AI coding assistants. Provides 19 MCP tools for note creation, semantic search, graph traversal, metadata queries, session memory, and passive knowledge capture — plus hooks and skills for seamless workflow integration. Published on npm as [`obsidian-pkm`](https://www.npmjs.com/package/obsidian-pkm).
+A Claude Code plugin that turns your Obsidian vault into persistent, structured memory for AI coding assistants. Provides 20 MCP tools for note creation, semantic search, graph traversal, metadata queries, and session memory — plus agents, hooks, and skills for seamless workflow integration. Published on npm as [`obsidian-pkm`](https://www.npmjs.com/package/obsidian-pkm).
 
 ## Why
 
@@ -15,7 +15,7 @@ Claude Code has built-in memory, but it's flat text files scoped to individual p
 - **Structured knowledge creation** — ADRs, research notes, devlogs, and tasks are created from enforced templates with validated frontmatter — not freeform text dumps. Your vault stays consistent and queryable.
 - **Semantic discovery** — "Find my notes about caching strategies" works even if you never used the word "caching." Conceptual search surfaces relevant knowledge that keyword search misses.
 - **Graph-aware connections** — Claude explores your knowledge graph by following wikilinks, discovering related notes by proximity rather than just content. Link suggestions help weave new notes into your existing web of knowledge.
-- **Passive capture** — Decisions, tasks, and research findings are captured in the background without interrupting your coding flow. A session-end sweep catches anything that slipped through.
+- **Knowledge capture** — Decisions, tasks, and research findings are captured by specialized agents in the background without interrupting your coding flow.
 
 Without this, knowledge stays fragmented across per-project memory files and chat logs. With it, your AI assistant maintains a unified knowledge base that compounds over time.
 
@@ -31,7 +31,6 @@ https://github.com/user-attachments/assets/58ad9c9b-d987-4728-89e7-33de20b73a38
 | `vault_append` | Add content to notes, with positional insert (after/before heading, end of section) |
 | `vault_edit` | Surgical string replacement for precise edits |
 | `vault_update_frontmatter` | Atomic YAML frontmatter updates (set, create, remove fields; validates enums by note type) |
-| `vault_capture` | Signal a PKM-worthy capture (decision, task, research, bug); background hook creates the note |
 
 ### Discovery & Search
 
@@ -71,6 +70,10 @@ https://github.com/user-attachments/assets/58ad9c9b-d987-4728-89e7-33de20b73a38
 | Tool | Description |
 |------|-------------|
 | `vault_activity` | Cross-conversation memory — logs every tool call with timestamps and session IDs |
+
+### Agents
+
+4 specialized agents are available via `/agents`: `vault-explorer` (research existing knowledge before creating notes), `devlog-updater` (update devlog after significant work blocks), `knowledge-sweeper` (capture decisions, research, and tasks after notable sessions), and `link-auditor` (audit vault link health after bulk note changes). Agents can be @-mentioned and run in foreground or background.
 
 ## Prerequisites
 
@@ -194,7 +197,7 @@ This enables `vault_semantic_search` and `vault_suggest_links`. Uses `text-embed
 
 ### 5. Enable PKM Hooks (optional)
 
-The hook system adds automatic context loading at session start and passive knowledge capture during coding. Requires the [Claude CLI](https://docs.anthropic.com/en/docs/claude-cli) installed and authenticated.
+The hook system adds automatic context loading at session start. Passive knowledge capture is handled by the canonical agents (knowledge-sweeper, devlog-updater) — see the Agents section above. Requires the [Claude CLI](https://docs.anthropic.com/en/docs/claude-cli) installed and authenticated.
 
 Add to your `~/.claude/settings.json` (alongside the `mcpServers` block):
 
@@ -213,31 +216,6 @@ Add to your `~/.claude/settings.json` (alongside the `mcpServers` block):
           }
         ]
       }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "VAULT_PATH=\"/path/to/your/vault\" node /path/to/obsidian-pkm-plugin/hooks/stop-sweep.js",
-            "async": true,
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "mcp__obsidian-pkm__vault_capture",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "VAULT_PATH=\"/path/to/your/vault\" /path/to/obsidian-pkm-plugin/hooks/capture-handler.sh",
-            "async": true,
-            "timeout": 10
-          }
-        ]
-      }
     ]
   }
 }
@@ -248,8 +226,6 @@ Replace `/path/to/your/vault` with your Obsidian vault path and `/path/to/obsidi
 | Hook | Event | What it does |
 |------|-------|--------------|
 | `session-start.js` | SessionStart | Loads project context (index, devlog, active tasks) at session start |
-| `stop-sweep.js` | Stop | PKM librarian: creates structured, graph-linked vault notes from the latest exchange |
-| `capture-handler.sh` | PostToolUse | Creates structured vault notes when `vault_capture` is called |
 
 See [hooks/README.md](hooks/README.md) for architecture details and troubleshooting.
 
@@ -308,7 +284,9 @@ graph LR
 ├── embeddings.js     # Semantic index (OpenAI embeddings, SQLite + sqlite-vec)
 ├── activity.js       # Activity log (session tracking, SQLite)
 ├── utils.js          # Shared utilities (frontmatter parsing, file listing)
-├── hooks/            # Claude Code hooks (session context, passive capture)
+├── hooks/            # Claude Code hooks (session context loading)
+├── agents/           # Specialized AI agents (vault-explorer, devlog-updater, knowledge-sweeper, link-auditor)
+├── skills/           # PKM workflow skills (pkm-write, pkm-explore, pkm-session-end)
 ├── templates/        # Obsidian note templates
 └── sample-project/   # Sample CLAUDE.md for your repos
 ```
@@ -325,7 +303,7 @@ All paths passed to tools are relative to vault root. The server includes path s
 
 **Session memory** records every tool call with timestamps and session IDs, so Claude can recall what was read, written, or searched in previous conversations. This turns ephemeral chat sessions into a continuous thread of work.
 
-**Passive capture** uses `vault_capture` to signal that something is worth persisting (a decision, task, research finding, or bug). The tool returns immediately — a PostToolUse hook spawns a background agent that creates the structured vault note. Combined with the Stop hook (which sweeps each session for un-captured knowledge), this keeps your vault up to date without interrupting the coding flow.
+**Knowledge capture** uses the `knowledge-sweeper` agent to identify and persist PKM-worthy content from a session (decisions, research findings, tasks, bug root causes). Delegate to it after significant work blocks. The `devlog-updater` agent handles devlog entries. Both run in the background without interrupting the coding flow.
 
 **Fuzzy path resolution** lets read-only tools accept short names instead of full vault paths. `vault_read({ path: "devlog" })` resolves to `01-Projects/MyApp/development/devlog.md` automatically (`.md` extension optional). Folder-scoped tools like `vault_search` and `vault_query` accept partial folder names — `folder: "MyApp"` resolves to `01-Projects/MyApp`. Ambiguous matches return an error listing candidates. Write/destructive tools always require exact paths.
 

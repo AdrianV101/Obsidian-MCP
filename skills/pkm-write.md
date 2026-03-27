@@ -1,11 +1,11 @@
 ---
-name: pkm-create
-description: Use when creating new vault notes via vault_write — handles duplicate checking, link discovery, annotations, and index updates. Trigger BEFORE any vault_write call for new notes.
+name: pkm-write
+description: Use when writing to the vault — creating new notes (vault_write), editing existing notes (vault_edit, vault_append, vault_update_frontmatter). Handles duplicate checking, link discovery, annotations, and index updates for new notes. Provides guidelines for modifications.
 ---
 
-# PKM Create — Note Creation with Knowledge Graph Integration
+# PKM Write — Vault Writing with Knowledge Graph Integration
 
-Every new note should be connected to the knowledge graph. Follow these steps in order.
+Follow these steps when creating new notes. When running as a subagent, the delegation prompt provides the note topic and project context.
 
 ## Step 1: Duplicate Check
 
@@ -15,9 +15,9 @@ Before creating, search for existing notes on the same topic:
 vault_semantic_search({ query: "<topic/title of intended note>", limit: 5 })
 ```
 
-- If a result has similarity **> 0.8**: **warn the user** and suggest editing the existing note instead of creating a duplicate
+- If a result has similarity **> 0.8**: **flag as likely duplicate** — suggest editing the existing note instead of creating a new one
 - If results are **0.5–0.8**: mention them as potentially related but proceed with creation
-- If **no close matches**: proceed
+- If **no close matches** or no relevant results: proceed with creation
 
 If `vault_semantic_search` is unavailable (no `OPENAI_API_KEY`), use `vault_search` with the note's title and key terms, and `vault_query` with matching tags to check for duplicates.
 
@@ -35,7 +35,7 @@ Use `vault_write` with the appropriate template. Select the template and path ba
 | Meeting record | `meeting-notes` | `<project>/planning/{title}.md` |
 | Literature/article notes | `literature-note` | `03-Resources/{title}.md` |
 
-Where `<project>` is the vault project path from session context (e.g., `01-Projects/MyApp`). Use the `# PKM:` annotation in CLAUDE.md or the SessionStart hook context to determine the project path.
+Where `<project>` is the vault project path (e.g., `01-Projects/MyApp`). Determine from the delegation prompt, CLAUDE.md `# PKM:` annotation, or SessionStart hook context.
 
 **Notes in `03-Resources/`** should be written as project-agnostic knowledge — useful regardless of where the insight originated. Use frontmatter tags or `## Related` links to trace the origin project, but write the content for a general audience.
 
@@ -66,7 +66,7 @@ Select the top **3–5** most relevant suggestions.
 
 If `vault_suggest_links` is unavailable (no `OPENAI_API_KEY`), use `vault_search` with key terms from the note's title/topic and `vault_query` with matching tags to manually identify good link targets.
 
-If **no suggestions are returned** (new vault or isolated topic), skip Steps 4–6 — the note's `## Related` section will be filled as the graph grows. Inform the user that no connections were found yet.
+If **no suggestions are returned** (new vault or isolated topic), skip Steps 4–6 — the note's `## Related` section will be filled as the graph grows.
 
 ## Step 4: Draft Annotations
 
@@ -114,3 +114,25 @@ For **significant note types** (ADR, permanent-note, research-note, troubleshoot
 
 - If the note is an **ADR**: add a wikilink to the project's `_index.md`
 - If the note is **project-scoped**: ensure the project `_index.md` references it where appropriate
+
+---
+
+## Modifying Existing Notes
+
+Guidelines for edits, appends, and frontmatter updates. These don't require the full creation workflow above.
+
+### vault_edit — Surgical String Replacement
+
+- Check if edits affect link targets: renaming a heading breaks `[[note#heading]]` wikilinks pointing to it
+- After significant content changes, consider running `vault_suggest_links` to discover new connections worth adding
+
+### vault_append — Adding Content
+
+- **Devlog entries**: Use `vault_append({ heading: "## Sessions", position: "after_heading" })` for reverse-chronological ordering
+- **Section additions**: Specify the `heading` param to insert in the right location rather than appending at EOF
+
+### vault_update_frontmatter — Atomic Field Updates
+
+- Prefer `vault_update_frontmatter` over `vault_edit` for YAML fields — it parses and re-serializes safely
+- Protected fields (`type`, `created`, `tags`) can be updated but not removed
+- Task status/priority have enum validation: `status` must be pending/active/done/cancelled, `priority` must be low/normal/high/urgent

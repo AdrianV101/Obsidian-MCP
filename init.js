@@ -198,40 +198,6 @@ export function detectInstallType(filePath) {
   return { command: "node", args: [cliPath] };
 }
 
-/**
- * Replace the MCP_CONFIG= line in a shell script with a pre-baked JSON config.
- * @param {string} scriptContent - Shell script content
- * @param {{ command: string, args: string[] }} installType - Server command
- * @returns {string} Patched script content
- */
-export function patchMcpConfig(scriptContent, installType) {
-  const argsJson = JSON.stringify(installType.args);
-  const replacement = `MCP_CONFIG='{"mcpServers":{"obsidian-pkm":{"command":"${installType.command}","args":${argsJson},"env":{"VAULT_PATH":"'"$VAULT_PATH"'"}}}}'`;
-  const lines = scriptContent.split("\n");
-  const result = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    if (lines[i].startsWith("MCP_CONFIG=")) {
-      result.push(replacement);
-      // Multi-line command substitution: contains $( but closing ) is on a later line
-      if (lines[i].includes("$(") && !lines[i].trimEnd().endsWith(")")) {
-        i++;
-        while (i < lines.length && !lines[i].trimEnd().endsWith(")")) {
-          i++;
-        }
-        i++; // skip the closing line
-      } else {
-        i++;
-      }
-    } else {
-      result.push(lines[i]);
-      i++;
-    }
-  }
-
-  return result.join("\n");
-}
 
 const PKM_HOOK_BASENAMES = new Set(["session-start.js", "stop-sweep.js", "capture-handler.sh"]);
 
@@ -256,8 +222,8 @@ export function isPkmHookEntry(entry) {
  * Build settings.json hook config entries for enabled hooks.
  * @param {string} vaultPath - Absolute vault path
  * @param {string} hooksDir - Absolute path to installed hooks directory
- * @param {{ sessionStart: boolean, stopSweep: boolean, captureHandler: boolean }} enabledHooks
- * @returns {Object} Hook entries keyed by event name (SessionStart, Stop, PostToolUse)
+ * @param {{ sessionStart: boolean }} enabledHooks
+ * @returns {Object} Hook entries keyed by event name (SessionStart)
  */
 export function buildHookEntries(vaultPath, hooksDir, enabledHooks) {
   const entries = {};
@@ -270,29 +236,6 @@ export function buildHookEntries(vaultPath, hooksDir, enabledHooks) {
         command: `VAULT_PATH="${vaultPath}" node ${path.join(hooksDir, "session-start.js")}`,
         timeout: 15,
         statusMessage: "Loading PKM project context...",
-      }],
-    }];
-  }
-
-  if (enabledHooks.stopSweep) {
-    entries.Stop = [{
-      hooks: [{
-        type: "command",
-        command: `VAULT_PATH="${vaultPath}" node ${path.join(hooksDir, "stop-sweep.js")}`,
-        async: true,
-        timeout: 10,
-      }],
-    }];
-  }
-
-  if (enabledHooks.captureHandler) {
-    entries.PostToolUse = [{
-      matcher: "mcp__obsidian-pkm__vault_capture",
-      hooks: [{
-        type: "command",
-        command: `VAULT_PATH="${vaultPath}" ${path.join(hooksDir, "capture-handler.sh")}`,
-        async: true,
-        timeout: 10,
       }],
     }];
   }
@@ -347,29 +290,18 @@ export async function mergeHooksIntoSettings(settingsPath, hookEntries, disabled
   return {};
 }
 
-const HOOK_FILES = ["session-start.js", "resolve-project.js", "load-context.js", "stop-sweep.js", "capture-handler.sh"];
-const SHELL_HOOKS = new Set(["capture-handler.sh"]);
+const HOOK_FILES = ["session-start.js", "resolve-project.js", "load-context.js"];
 
 /**
- * Copy hook scripts to destination, patching shell scripts with correct MCP config.
+ * Copy hook scripts to destination directory.
  * @param {string} src - Source hooks directory
  * @param {string} dest - Destination directory (e.g. ~/.claude/hooks/pkm/)
- * @param {{ command: string, args: string[] }} installType - Server command for MCP config patching
  */
-export async function copyHooks(src, dest, installType) {
+export async function copyHooks(src, dest) {
   await fs.mkdir(dest, { recursive: true });
 
   for (const file of HOOK_FILES) {
-    const srcFile = path.join(src, file);
-    const destFile = path.join(dest, file);
-
-    if (SHELL_HOOKS.has(file)) {
-      let content = await fs.readFile(srcFile, "utf8");
-      content = patchMcpConfig(content, installType);
-      await fs.writeFile(destFile, content, { mode: 0o755 });
-    } else {
-      await fs.copyFile(srcFile, destFile);
-    }
+    await fs.copyFile(path.join(src, file), path.join(dest, file));
   }
 }
 
@@ -585,8 +517,7 @@ Nothing is written until you confirm each step. Press Ctrl+C at any time to canc
 
       if (doCopyHooks) {
         try {
-          const installType = detectInstallType();
-          await copyHooks(bundledHooksDir, hooksDir, installType);
+          await copyHooks(bundledHooksDir, hooksDir);
           console.log(`  Hook scripts installed to ${hooksDir}`);
         } catch (copyErr) {
           console.error(`\n  Hook file installation failed: ${copyErr.message}`);
@@ -607,27 +538,13 @@ Nothing is written until you confirm each step. Press Ctrl+C at any time to canc
           default: true,
         });
 
-        const enableStopSweep = await confirmPrompt({
-          message: "Enable passive capture? After each Claude response, a background agent scans the conversation for decisions, task changes, and research findings, and stages them in your vault's inbox.",
-          default: true,
-        });
-
-        const enableCaptureHandler = await confirmPrompt({
-          message: "Enable explicit capture? When Claude calls vault_capture, a background agent creates a properly structured vault note (ADR, task, research note, or bug report) from the capture payload.",
-          default: true,
-        });
-
         const enabledHooks = {
           sessionStart: enableSessionStart,
-          stopSweep: enableStopSweep,
-          captureHandler: enableCaptureHandler,
         };
 
         const hookEntries = buildHookEntries(vaultPath, hooksDir, enabledHooks);
-        const disabledEvents = [];
+        const disabledEvents = ["Stop", "PostToolUse"];
         if (!enableSessionStart) disabledEvents.push("SessionStart");
-        if (!enableStopSweep) disabledEvents.push("Stop");
-        if (!enableCaptureHandler) disabledEvents.push("PostToolUse");
 
         const settingsPath = path.join(os.homedir(), ".claude", "settings.json");
         const mergeResult = await mergeHooksIntoSettings(settingsPath, hookEntries, disabledEvents);
@@ -636,11 +553,7 @@ Nothing is written until you confirm each step. Press Ctrl+C at any time to canc
           console.error(`\n  ${mergeResult.error}`);
           hooksSummary = "skipped (settings.json error)";
         } else {
-          const names = [];
-          if (enableSessionStart) names.push("context-loading");
-          if (enableStopSweep) names.push("passive-capture");
-          if (enableCaptureHandler) names.push("explicit-capture");
-          hooksSummary = names.length > 0 ? names.join(", ") : "none";
+          hooksSummary = enableSessionStart ? "context-loading" : "none";
           console.log(`  Hooks configured: ${hooksSummary}`);
         }
         steps.push(`Hooks: ${hooksSummary}`);

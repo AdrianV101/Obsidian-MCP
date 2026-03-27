@@ -354,40 +354,6 @@ Pass custom <%...%> variables via the 'variables' parameter.`,
         }
       },
       {
-        name: "vault_capture",
-        description: "Signal that something is worth capturing in the PKM vault. " +
-          "Returns immediately — a background agent handles the actual note creation. " +
-          "Use this when you identify a decision, task, or research finding worth preserving.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            type: {
-              type: "string",
-              enum: ["adr", "task", "research", "bug"],
-              description: "The type of capture: adr (decision), task, research (finding/pattern), bug (issue/fix)"
-            },
-            title: {
-              type: "string",
-              description: "Brief descriptive title (e.g., 'Use sqlite-vec over Chroma')"
-            },
-            content: {
-              type: "string",
-              description: "The substance of the capture — context, rationale, details. 1-5 sentences."
-            },
-            priority: {
-              type: "string",
-              enum: ["low", "normal", "high", "urgent"],
-              description: "Priority level (tasks only, default: normal)"
-            },
-            project: {
-              type: "string",
-              description: "Project name for vault routing (e.g., 'Obsidian-MCP'). If omitted, inferred from session context."
-            }
-          },
-          required: ["type", "title", "content"]
-        }
-      },
-      {
         name: "vault_add_links",
         description: "Add annotated wikilinks to a note's section (default: ## Related). " +
           "Deduplicates by basename (skips links already present). " +

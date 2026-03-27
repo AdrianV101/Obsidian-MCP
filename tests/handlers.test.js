@@ -1924,8 +1924,13 @@ describe("createHandlers", () => {
     }
   });
 
-  it("returns exactly 21 handlers", () => {
-    assert.equal(handlers.size, 21);
+  it("returns exactly 20 handlers", () => {
+    assert.equal(handlers.size, 20);
+  });
+
+  it("should not include vault_capture in handler map", () => {
+    assert.equal(handlers.has("vault_capture"), false,
+      "vault_capture should be removed from handler map");
   });
 });
 

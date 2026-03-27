@@ -11,11 +11,22 @@
 
 The `obsidian-pkm` plugin provides skills that automate common PKM workflows:
 
-- `obsidian-pkm:pkm-create` — Use when creating vault notes (duplicate check, linking, annotations)
+- `obsidian-pkm:pkm-write` — Use when creating vault notes (duplicate check, linking, annotations)
 - `obsidian-pkm:pkm-explore` — Use when researching what the vault knows about a topic (graph + semantic exploration)
 - `obsidian-pkm:pkm-session-end` — Use when wrapping up a session (devlog, link audit, undocumented work capture)
 
 Session-start context loading is handled automatically by the SessionStart hook.
+
+### PKM Agents
+
+The plugin provides 4 specialized agents (visible in `/agents`). Delegate to them proactively:
+
+| Agent | When to Delegate | Mode |
+|---|---|---|
+| `vault-explorer` | Before creating notes on a topic, when researching existing knowledge | Foreground |
+| `devlog-updater` | After completing a significant development block, before session ends | Background |
+| `knowledge-sweeper` | After significant work that produced decisions, research, tasks, or gotchas | Background |
+| `link-auditor` | After creating/modifying multiple vault notes, periodic health checks | Background |
 
 ## Documentation Rules
 
@@ -63,22 +74,7 @@ Use the `obsidian-pkm:pkm-session-end` skill at the end of each session — it h
 
 ### Reusable Knowledge
 
-Use the `obsidian-pkm:pkm-create` skill when creating any vault note — it handles duplicate checking, template selection, link discovery, and bidirectional linking automatically.
-
-### Passive Capture
-
-When you identify something worth preserving (a decision, task, research finding, or bug), use `vault_capture` to signal it. The tool returns immediately; the PostToolUse hook creates the structured vault note in the background.
-
-```
-vault_capture({
-  type: "adr",       // or: task | research | bug
-  title: "Brief descriptive title",
-  content: "Context, rationale, and details. 1-5 sentences.",
-  project: "[YourProjectName]"  // omit to infer from session context
-})
-```
-
-Use `vault_capture` instead of manually calling `vault_write` for ad-hoc captures during a session — it's faster and non-blocking. Use `vault_write` directly when you need precise control over the note path and content.
+Use the `obsidian-pkm:pkm-write` skill when creating any vault note — it handles duplicate checking, template selection, link discovery, and bidirectional linking automatically.
 
 ### Troubleshooting
 

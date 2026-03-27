@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "obsidian-pkm",
-      "description": "Bidirectional knowledge flow between Claude Code and Obsidian — 21 MCP tools, skills, and hooks for PKM",
+      "description": "Bidirectional knowledge flow between Claude Code and Obsidian — 20 MCP tools, skills, and hooks for PKM",
       "category": "productivity",
       "source": {
         "source": "url",

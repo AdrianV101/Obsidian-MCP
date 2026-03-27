@@ -1,11 +1,11 @@
 ---
 name: pkm-session-end
-description: Use when wrapping up a work session — creates devlog entry, captures undocumented decisions/research/debugging from conversation, audits link health of session work, and updates project index
+description: Use when wrapping up a work session — creates devlog entry, captures undocumented decisions/research/debugging, audits link health of session work, and updates project index. Primarily used via the devlog-updater agent.
 ---
 
 # PKM Session End — Knowledge Capture and Graph Maintenance
 
-Run this workflow when wrapping up a session to ensure no knowledge is lost and the graph stays healthy.
+Workflow for session wrap-up. When running as a subagent, the delegation prompt provides the project path and devlog boundary context. The agent's system prompt handles transcript discovery (Step 0) before this workflow begins.
 
 ## Step 1: Devlog Entry
 
@@ -64,44 +64,23 @@ Review the session's conversation for significant work that only exists in chat 
 | Reusable insights or patterns | `permanent-note` | `03-Resources/Development/{title}.md` |
 | New tasks identified | `task` | `<project>/tasks/{title}.md` |
 
-Where `<project>` is the vault project path from session context. See `pkm-create` Step 2 for the full mapping and Resources guidance.
+Where `<project>` is the vault project path from session context. See `pkm-write` Step 2 for the full mapping and Resources guidance.
 
-**Use the pkm-create skill** for each note to get proper duplicate checking and linking.
+Follow the pkm-write creation workflow for each note to get proper duplicate checking and linking.
 
 Skip if the session was purely mechanical (config changes, minor fixes) with nothing worth documenting beyond the devlog.
 
-## Step 4: Link Audit
+## Step 4: Quick Link Check
 
-Run a link health check on the project folder to find disconnected notes:
-
-```
-vault_link_health({ folder: "<project-folder>", checks: ["orphans", "weak"] })
-```
-
-Flag notes with **zero links** (orphans) or **only 1 link** (weak) — these are knowledge islands that need connections.
-
-## Step 5: Patch Gaps
-
-For each under-connected note found in Step 4:
+Run a targeted link health check on files touched during this session:
 
 ```
-vault_suggest_links({ path: "<under-connected-note>", limit: 5 })
+vault_link_health({ folder: "<project-folder>", checks: ["orphans", "broken"] })
 ```
 
-If `vault_suggest_links` is unavailable (no `OPENAI_API_KEY`), use `vault_search` with the note's title and key terms, and `vault_query` with matching tags to find link candidates manually.
+For any **orphan** notes found (no connections), add links using `vault_add_links`. Broken links (pointing to non-existent files) may self-resolve if the missing notes were created earlier in this session — otherwise note them for manual review. For deeper audit (weak connections, ambiguous links, full vault scan), delegate to the link-auditor agent separately.
 
-Then insert links using `vault_add_links`:
-
-```
-vault_add_links({
-  path: "<under-connected-note>",
-  links: [
-    { target: "<path>", annotation: "relationship" }
-  ]
-})
-```
-
-## Step 6: Index Update
+## Step 5: Index Update
 
 Check and update if changed during the session:
 - **Project `_index.md`**: Add links to new ADRs, update project status, add key links

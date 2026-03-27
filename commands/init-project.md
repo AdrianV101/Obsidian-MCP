@@ -76,7 +76,7 @@ The section content (substitute the actual project path):
 - **Vault project**: `01-Projects/<name>/`
 - **MCP Server**: `obsidian-pkm` plugin
 
-Document decisions, research findings, and debugging sessions as you work using `vault_capture` for quick captures or the `obsidian-pkm:pkm-create` skill for structured notes with linking.
+Document decisions, research findings, and debugging sessions as you work. The `knowledge-sweeper` agent captures PKM-worthy content in the background, or use the `obsidian-pkm:pkm-write` skill for structured notes with linking.
 
 Use `obsidian-pkm:pkm-explore` to research what the vault already knows about a topic before creating new content.
 
