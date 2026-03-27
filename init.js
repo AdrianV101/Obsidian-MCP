@@ -198,42 +198,8 @@ export function detectInstallType(filePath) {
   return { command: "node", args: [cliPath] };
 }
 
-/**
- * Replace the MCP_CONFIG= line in a shell script with a pre-baked JSON config.
- * @param {string} scriptContent - Shell script content
- * @param {{ command: string, args: string[] }} installType - Server command
- * @returns {string} Patched script content
- */
-export function patchMcpConfig(scriptContent, installType) {
-  const argsJson = JSON.stringify(installType.args);
-  const replacement = `MCP_CONFIG='{"mcpServers":{"obsidian-pkm":{"command":"${installType.command}","args":${argsJson},"env":{"VAULT_PATH":"'"$VAULT_PATH"'"}}}}'`;
-  const lines = scriptContent.split("\n");
-  const result = [];
-  let i = 0;
 
-  while (i < lines.length) {
-    if (lines[i].startsWith("MCP_CONFIG=")) {
-      result.push(replacement);
-      // Multi-line command substitution: contains $( but closing ) is on a later line
-      if (lines[i].includes("$(") && !lines[i].trimEnd().endsWith(")")) {
-        i++;
-        while (i < lines.length && !lines[i].trimEnd().endsWith(")")) {
-          i++;
-        }
-        i++; // skip the closing line
-      } else {
-        i++;
-      }
-    } else {
-      result.push(lines[i]);
-      i++;
-    }
-  }
-
-  return result.join("\n");
-}
-
-const PKM_HOOK_BASENAMES = new Set(["session-start.js"]);
+const PKM_HOOK_BASENAMES = new Set(["session-start.js", "stop-sweep.js", "capture-handler.sh"]);
 
 /**
  * Detect if a hook entry is a PKM hook (by path substring or script basename).
@@ -325,28 +291,17 @@ export async function mergeHooksIntoSettings(settingsPath, hookEntries, disabled
 }
 
 const HOOK_FILES = ["session-start.js", "resolve-project.js", "load-context.js"];
-const SHELL_HOOKS = new Set();
 
 /**
- * Copy hook scripts to destination, patching shell scripts with correct MCP config.
+ * Copy hook scripts to destination directory.
  * @param {string} src - Source hooks directory
  * @param {string} dest - Destination directory (e.g. ~/.claude/hooks/pkm/)
- * @param {{ command: string, args: string[] }} installType - Server command for MCP config patching
  */
-export async function copyHooks(src, dest, installType) {
+export async function copyHooks(src, dest) {
   await fs.mkdir(dest, { recursive: true });
 
   for (const file of HOOK_FILES) {
-    const srcFile = path.join(src, file);
-    const destFile = path.join(dest, file);
-
-    if (SHELL_HOOKS.has(file)) {
-      let content = await fs.readFile(srcFile, "utf8");
-      content = patchMcpConfig(content, installType);
-      await fs.writeFile(destFile, content, { mode: 0o755 });
-    } else {
-      await fs.copyFile(srcFile, destFile);
-    }
+    await fs.copyFile(path.join(src, file), path.join(dest, file));
   }
 }
 
@@ -562,8 +517,7 @@ Nothing is written until you confirm each step. Press Ctrl+C at any time to canc
 
       if (doCopyHooks) {
         try {
-          const installType = detectInstallType();
-          await copyHooks(bundledHooksDir, hooksDir, installType);
+          await copyHooks(bundledHooksDir, hooksDir);
           console.log(`  Hook scripts installed to ${hooksDir}`);
         } catch (copyErr) {
           console.error(`\n  Hook file installation failed: ${copyErr.message}`);
@@ -589,7 +543,7 @@ Nothing is written until you confirm each step. Press Ctrl+C at any time to canc
         };
 
         const hookEntries = buildHookEntries(vaultPath, hooksDir, enabledHooks);
-        const disabledEvents = [];
+        const disabledEvents = ["Stop", "PostToolUse"];
         if (!enableSessionStart) disabledEvents.push("SessionStart");
 
         const settingsPath = path.join(os.homedir(), ".claude", "settings.json");
@@ -599,9 +553,7 @@ Nothing is written until you confirm each step. Press Ctrl+C at any time to canc
           console.error(`\n  ${mergeResult.error}`);
           hooksSummary = "skipped (settings.json error)";
         } else {
-          const names = [];
-          if (enableSessionStart) names.push("context-loading");
-          hooksSummary = names.length > 0 ? names.join(", ") : "none";
+          hooksSummary = enableSessionStart ? "context-loading" : "none";
           console.log(`  Hooks configured: ${hooksSummary}`);
         }
         steps.push(`Hooks: ${hooksSummary}`);
