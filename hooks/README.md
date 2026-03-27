@@ -58,7 +58,7 @@ The hook system uses a `type: "command"` hook that runs synchronously. `session-
 
 ### MCP config resolution
 
-`session-start.js` uses the ES module pattern (`import.meta.url` → `fileURLToPath` → `path.dirname`) to resolve its own location and construct the path to `index.js`. This works regardless of current working directory. The `VAULT_PATH` environment variable must be set in the hook command because the hook script runs outside the MCP server process.
+`session-start.js` imports its helper modules (`resolve-project.js`, `load-context.js`) using relative paths from the same directory. The `VAULT_PATH` environment variable must be set in the hook command because the hook script runs outside the MCP server process.
 
 ### Helper modules
 

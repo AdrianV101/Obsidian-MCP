@@ -21,6 +21,7 @@
     "templates/",
     "sample-project/",
     ".claude-plugin/",
+    "agents/",
     "commands/",
     "skills/",
     ".mcp.json"
