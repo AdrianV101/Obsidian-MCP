@@ -365,14 +365,16 @@ export async function createHandlers({ vaultPath, templateRegistry, semanticInde
   }
 
   async function handleList(args) {
-    const listPath = resolvePath(args.path || "");
+    const inputPath = args.path || "";
+    const listPath = inputPath ? resolveFolder(inputPath) : vaultPath;
+    const relativePath = inputPath ? path.relative(vaultPath, listPath) : "";
     const entries = await fs.readdir(listPath, { withFileTypes: true });
 
     const items = [];
     for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
 
-      const itemPath = path.join(args.path || "", entry.name);
+      const itemPath = path.join(relativePath, entry.name);
       if (entry.isDirectory()) {
         items.push(`[dir] ${itemPath}/`);
         if (args.recursive) {

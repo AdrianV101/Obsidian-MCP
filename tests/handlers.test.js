@@ -732,6 +732,40 @@ describe("fuzzy folder resolution", () => {
       /escapes vault/
     );
   });
+
+  it("vault_list resolves exact folder name", async () => {
+    const list = handlers.get("vault_list");
+    const result = await list({ path: "notes" });
+    assert.match(result.content[0].text, /alpha\.md/);
+  });
+
+  it("vault_list resolves partial folder name (fuzzy)", async () => {
+    const list = handlers.get("vault_list");
+    // "my-app" should resolve to "projects/my-app" via substring match
+    const result = await list({ path: "my-app" });
+    const text = result.content[0].text;
+    assert.match(text, /research/);
+  });
+
+  it("vault_list fuzzy resolution shows resolved paths in output", async () => {
+    const list = handlers.get("vault_list");
+    // When fuzzy-resolving "my-app" → "projects/my-app", output paths
+    // should use the resolved path, not the fuzzy input
+    const result = await list({ path: "my-app", recursive: true });
+    const text = result.content[0].text;
+    assert.match(text, /projects\/my-app/);
+  });
+
+  it("vault_list rejects unknown folder", async () => {
+    const list = handlers.get("vault_list");
+    await assert.rejects(
+      () => list({ path: "nonexistent-folder-xyz" }),
+      (err) => {
+        assert.match(err.message, /not found|No matching|ENOENT/i);
+        return true;
+      }
+    );
+  });
 });
 
 // ─── vault_write ───────────────────────────────────────────────────────
