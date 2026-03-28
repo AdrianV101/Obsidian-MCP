@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-03-28
+
 ### Added
 - 4 canonical plugin agents: vault-explorer, devlog-updater, knowledge-sweeper, link-auditor
 - Agents visible in `/agents`, can be @-mentioned, run foreground or background
@@ -17,9 +19,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Tool count: 21 -> 20 (removed vault_capture)
 
 ### Removed
-- `vault_capture` MCP tool (replaced by pkm-write skill + knowledge-sweeper agent)
+- **BREAKING:** `vault_capture` MCP tool (replaced by pkm-write skill + knowledge-sweeper agent)
+- **BREAKING:** `pkm-create` skill renamed to `pkm-write`
 - `stop-sweep.js` hook (replaced by knowledge-sweeper agent)
 - `capture-handler.sh` hook (replaced by pkm-write skill)
+
+### Migration
+- `vault_capture` → Use `vault_write` directly (guided by pkm-write skill) for intentional captures. The knowledge-sweeper agent handles passive capture automatically.
+- `pkm-create` → Renamed to `pkm-write`. Update any CLAUDE.md references or custom instructions.
+- Hooks: Re-run `obsidian-pkm init` to clean up legacy Stop/PostToolUse entries from settings.json. Only the SessionStart hook remains.
 
 ## [2.1.6] - 2026-03-26
 
