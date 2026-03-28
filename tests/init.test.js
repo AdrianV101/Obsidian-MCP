@@ -243,12 +243,12 @@ describe("buildMcpAddArgs", () => {
     const args = buildMcpAddArgs({
       vaultPath: "/home/user/Documents/PKM",
       openaiKey: null,
-      installType: { command: "npx", args: ["-y", "obsidian-pkm@latest"] },
+      installType: { command: "npx", args: ["-y", "obsidian-pkm@^3"] },
     });
     assert.deepEqual(args, [
       "mcp", "add", "-s", "user",
       "-e", "VAULT_PATH=/home/user/Documents/PKM",
-      "--", "obsidian-pkm", "npx", "-y", "obsidian-pkm@latest",
+      "--", "obsidian-pkm", "npx", "-y", "obsidian-pkm@^3",
     ]);
   });
 
@@ -256,7 +256,7 @@ describe("buildMcpAddArgs", () => {
     const args = buildMcpAddArgs({
       vaultPath: "/vault",
       openaiKey: "sk-test-key",
-      installType: { command: "npx", args: ["-y", "obsidian-pkm@latest"] },
+      installType: { command: "npx", args: ["-y", "obsidian-pkm@^3"] },
     });
     assert.ok(args.includes("-e"));
     const keyIdx = args.indexOf("OPENAI_API_KEY=sk-test-key");
@@ -281,7 +281,7 @@ describe("buildMcpAddArgs", () => {
     const args = buildMcpAddArgs({
       vaultPath: "/vault",
       openaiKey: "sk-key",
-      installType: { command: "npx", args: ["-y", "obsidian-pkm@latest"] },
+      installType: { command: "npx", args: ["-y", "obsidian-pkm@^3"] },
     });
     const nameIdx = args.indexOf("obsidian-pkm");
     const flagIndices = args
@@ -296,7 +296,7 @@ describe("buildMcpAddArgs", () => {
     const args = buildMcpAddArgs({
       vaultPath: "/vault",
       openaiKey: null,
-      installType: { command: "npx", args: ["-y", "obsidian-pkm@latest"] },
+      installType: { command: "npx", args: ["-y", "obsidian-pkm@^3"] },
     });
     const nameIdx = args.indexOf("obsidian-pkm");
     const dashIdx = args.indexOf("--");
@@ -309,13 +309,13 @@ describe("detectInstallType", () => {
   it("returns npx for a path inside node_modules", () => {
     const result = detectInstallType("/usr/lib/node_modules/pkm-mcp-server/init.js");
     assert.equal(result.command, "npx");
-    assert.deepEqual(result.args, ["-y", "obsidian-pkm@latest"]);
+    assert.deepEqual(result.args, ["-y", "obsidian-pkm@^3"]);
   });
 
   it("returns npx for new package name in node_modules", () => {
     const result = detectInstallType("/usr/lib/node_modules/obsidian-pkm/init.js");
     assert.equal(result.command, "npx");
-    assert.deepEqual(result.args, ["-y", "obsidian-pkm@latest"]);
+    assert.deepEqual(result.args, ["-y", "obsidian-pkm@^3"]);
   });
 
   it("returns node with absolute cli.js path for a source install", () => {

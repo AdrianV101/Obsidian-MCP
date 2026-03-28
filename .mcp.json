@@ -1,7 +1,7 @@
 {
   "obsidian-pkm": {
     "command": "npx",
-    "args": ["-y", "obsidian-pkm@latest"],
+    "args": ["-y", "obsidian-pkm@^3"],
     "env": {
       "VAULT_PATH": "${VAULT_PATH}"
     }

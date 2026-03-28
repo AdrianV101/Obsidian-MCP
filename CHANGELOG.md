@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.3] - 2026-03-28
+
+### Changed
+- Replaced `obsidian-pkm@latest` with `obsidian-pkm@^3` across .mcp.json, init.js, README, and CLAUDE.md to prevent npm cache staleness breaking MCP connections after upgrades
+
 ## [3.0.2] - 2026-03-28
 
 ### Changed

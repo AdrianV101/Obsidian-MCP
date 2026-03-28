@@ -192,7 +192,7 @@ export async function dirSize(dirPath) {
 export function detectInstallType(filePath) {
   const thisFile = filePath || fileURLToPath(import.meta.url);
   if (thisFile.includes("node_modules")) {
-    return { command: "npx", args: ["-y", "obsidian-pkm@latest"] };
+    return { command: "npx", args: ["-y", "obsidian-pkm@^3"] };
   }
   const cliPath = path.join(path.dirname(thisFile), "cli.js");
   return { command: "node", args: [cliPath] };

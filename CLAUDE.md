@@ -286,7 +286,7 @@ obsidian-pkm init
 claude mcp add -s user \
   -e VAULT_PATH=/absolute/path/to/obsidian/vault \
   -e OBSIDIAN_PKM_OPENAI_KEY=sk-... \
-  -- obsidian-pkm npx -y obsidian-pkm@latest
+  -- obsidian-pkm npx -y obsidian-pkm@^3
 ```
 
 `OBSIDIAN_PKM_OPENAI_KEY` (or `OPENAI_API_KEY`) is optional — without it, all tools except `vault_semantic_search` and `vault_suggest_links` work normally. The plugin-scoped name avoids conflicts with project-level OpenAI keys.
