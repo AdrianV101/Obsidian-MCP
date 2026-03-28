@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-03-28
+
+### Security
+- Updated `path-to-regexp` to fix high-severity DoS vulnerabilities (GHSA-j3q9-mxjg-w52f, GHSA-27v5-c462-wpq7)
+
 ## [3.0.0] - 2026-03-28
 
 ### Added

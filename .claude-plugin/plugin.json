@@ -1,6 +1,6 @@
 {
   "name": "obsidian-pkm",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Bidirectional knowledge flow between Claude Code and Obsidian — tools, skills, and hooks for PKM",
   "author": {
     "name": "Adrian Verhoosel"
