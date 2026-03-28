@@ -304,6 +304,7 @@ Vault/
 - Project index files: `_index.md`
 - All notes use YAML frontmatter with `type`, `status`, `created` fields
 - Paths passed to MCP tools are relative to vault root
+- **Version bumps must update BOTH files**: `package.json` AND `.claude-plugin/plugin.json`. The plugin system reads version from `plugin.json`, not `package.json` — forgetting `plugin.json` causes updates to appear stuck.
 
 ## Metadata Schema
 
